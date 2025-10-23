@@ -280,11 +280,76 @@
             }
         }
 
+        // Toggle Feedback modal
+        function toggleFeedback() {
+            const modal = document.getElementById('feedbackModal');
+            const form = document.getElementById('feedbackForm');
+            const success = document.getElementById('feedbackSuccess');
+
+            if (modal.style.display === 'flex') {
+                modal.style.display = 'none';
+                // Reset form when closing
+                form.reset();
+                form.style.display = 'block';
+                success.style.display = 'none';
+            } else {
+                modal.style.display = 'flex';
+            }
+        }
+
+        // Submit feedback form
+        async function submitFeedback(event) {
+            event.preventDefault();
+
+            const rating = document.querySelector('input[name="rating"]:checked').value;
+            const email = document.getElementById('feedbackEmail').value;
+            const message = document.getElementById('feedbackMessage').value;
+
+            const feedbackData = {
+                rating: rating,
+                email: email || 'Not provided',
+                message: message,
+                timestamp: new Date().toISOString(),
+                room: currentRoom || 'Not in room'
+            };
+
+            try {
+                const response = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(feedbackData)
+                });
+
+                if (response.ok) {
+                    // Show success message
+                    document.getElementById('feedbackForm').style.display = 'none';
+                    document.getElementById('feedbackSuccess').style.display = 'block';
+
+                    // Close modal after 2 seconds
+                    setTimeout(() => {
+                        toggleFeedback();
+                    }, 2000);
+                } else {
+                    alert('Failed to submit feedback. Please try again later.');
+                }
+            } catch (error) {
+                console.error('Error submitting feedback:', error);
+                alert('Failed to submit feedback. Please try again later.');
+            }
+        }
+
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('whatsNewModal');
-            if (event.target === modal) {
-                modal.style.display = 'none';
+            const whatsNewModal = document.getElementById('whatsNewModal');
+            const feedbackModal = document.getElementById('feedbackModal');
+
+            if (event.target === whatsNewModal) {
+                whatsNewModal.style.display = 'none';
+            }
+            if (event.target === feedbackModal) {
+                toggleFeedback();
             }
         }
 
@@ -357,10 +422,94 @@
             }
         }
 
-        socket.on('updateUsers', function (users) {
-            let userList = '';
-            let userCount = Object.keys(users).length;
+        // Helper function to distribute users across rows evenly
+        function distributeUsersToRows(users, maxPerRow = 8) {
+            if (!users || !Array.isArray(users)) {
+                console.error('distributeUsersToRows: invalid users array', users);
+                return [];
+            }
 
+            const userCount = users.length;
+            if (userCount === 0) return [];
+
+            // Calculate number of rows needed
+            const rows = Math.ceil(userCount / maxPerRow);
+
+            // Calculate users per row (distribute evenly)
+            const baseUsersPerRow = Math.floor(userCount / rows);
+            const extraUsers = userCount % rows;
+
+            const rowSizes = [];
+            for (let i = 0; i < rows; i++) {
+                // First 'extraUsers' rows get one extra user
+                rowSizes.push(baseUsersPerRow + (i < extraUsers ? 1 : 0));
+            }
+
+            // Split users into rows
+            const userRows = [];
+            let currentIndex = 0;
+            for (const size of rowSizes) {
+                userRows.push(users.slice(currentIndex, currentIndex + size));
+                currentIndex += size;
+            }
+
+            console.log(`Distributed ${userCount} users into ${userRows.length} rows:`, rowSizes);
+            return userRows;
+        }
+
+        // Helper function to render user card
+        function renderUserCard(user, showVoteValue = false) {
+            if (!user) {
+                console.error('renderUserCard called with null/undefined user');
+                return '';
+            }
+
+            const breakClass = user.requestBreak ? 'has-break-request' : '';
+            const questionClass = user.hasQuestion ? 'has-question' : '';
+            const awayClass = user.isAway ? 'is-away' : '';
+            const masterClass = user.isMaster ? 'is-master' : '';
+            const masterBadge = user.isMaster ? ' 👑' : '';
+            const userAvatar = user.avatar || '👤';
+            const userName = user.name || 'Unknown';
+            const socketId = user.socketId || '';
+
+            let voteDisplay;
+            let revealedClass = '';
+
+            if (showVoteValue) {
+                // Show actual vote values
+                revealedClass = 'vote-revealed';
+                if (user.isMaster) {
+                    voteDisplay = '🥺';
+                } else if (user.isAway) {
+                    voteDisplay = '💤';
+                } else if (user.vote === '☕') {
+                    voteDisplay = '☕';
+                } else if (user.vote !== null && user.vote !== 'null' && user.vote !== undefined) {
+                    voteDisplay = String(user.vote);
+                } else {
+                    voteDisplay = '🥺';
+                }
+            } else {
+                // Show vote status
+                voteDisplay = user.isMaster ? 'Voted' : (user.isAway ? '💤' : (user.vote !== null && user.vote !== undefined ? 'Voted' : 'Not voted'));
+            }
+
+            const vibrateButton = (isMaster && !user.isMaster)
+                ? `<button class="vibrate-btn" onclick="sendVibration('${socketId}', event)" title="Notify user">🔔</button>`
+                : '';
+
+            return `
+                <div class="userCard ${(user.vote !== null && user.vote !== undefined) || user.isMaster ? 'voted' : ''} ${breakClass} ${questionClass} ${awayClass} ${masterClass}" data-socket-id="${socketId}">
+                    ${vibrateButton}
+                    <div class="user-card-avatar">${userAvatar}</div>
+                    <h3>${userName}${masterBadge}</h3>
+                    <p class="${revealedClass}">${voteDisplay}</p>
+                </div>
+            `;
+        }
+
+        socket.on('updateUsers', function (users) {
             // Sort users: master first, then others
             const sortedUsers = Object.values(users).sort((a, b) => {
                 if (a.isMaster) return -1;
@@ -368,55 +517,19 @@
                 return 0;
             });
 
-            sortedUsers.forEach((user) => {
-                const breakClass = user.requestBreak ? 'has-break-request' : '';
-                const questionClass = user.hasQuestion ? 'has-question' : '';
-                const awayClass = user.isAway ? 'is-away' : '';
-                const masterClass = user.isMaster ? 'is-master' : '';
+            // Distribute users to rows
+            const userRows = distributeUsersToRows(sortedUsers, 8);
 
-                // Determine vote display based on whether votes are revealed
-                let voteDisplay;
-                let revealedClass = '';
-
-                if (votesRevealed) {
-                    // If votes are revealed, show actual values
-                    revealedClass = 'vote-revealed';
-                    if (user.isMaster) {
-                        voteDisplay = '🥺';
-                    } else if (user.isAway) {
-                        voteDisplay = '💤';
-                    } else if (user.vote === '☕') {
-                        voteDisplay = '☕';
-                    } else if (user.vote !== null && user.vote !== 'null') {
-                        voteDisplay = user.vote;
-                    } else {
-                        voteDisplay = '🥺';
-                    }
-                } else {
-                    // If votes not revealed, show status text
-                    voteDisplay = user.isMaster ? 'Voted' : (user.isAway ? '💤' : (user.vote !== null ? 'Voted' : 'Not voted'));
-                }
-
-                const masterBadge = user.isMaster ? ' 👑' : '';
-                const userAvatar = user.avatar || '👤';
-
-                // Add vibrate button only for Scrum Master and not for themselves
-                const vibrateButton = (isMaster && !user.isMaster)
-                    ? `<button class="vibrate-btn" onclick="sendVibration('${user.socketId}', event)" title="Notify user">🔔</button>`
-                    : '';
-
-                userList += `
-            <div class="userCard ${user.vote !== null || user.isMaster ? 'voted' : ''} ${breakClass} ${questionClass} ${awayClass} ${masterClass}" data-socket-id="${user.socketId}">
-                ${vibrateButton}
-                <div class="user-card-avatar">${userAvatar}</div>
-                <h3>${user.name}${masterBadge}</h3>
-                <p class="${revealedClass}">${voteDisplay}</p>
-            </div>
-        `;
+            let userList = '';
+            userRows.forEach((row, rowIndex) => {
+                userList += `<div class="user-row">`;
+                row.forEach((user) => {
+                    userList += renderUserCard(user, false);
+                });
+                userList += `</div>`;
             });
 
             document.getElementById("users").innerHTML = userList;
-            // userCount display removed - not in HTML
 
             // Only hide statistics if votes haven't been revealed yet
             if (!votesRevealed) {
@@ -427,62 +540,45 @@
 
 
         socket.on('updateVotes', function (users, voters, statistics) {
+            console.log('updateVotes received:', users, statistics);
 
-            let userList = '';
+            try {
+                // Sort users: master first, then others
+                const sortedUsers = Object.values(users).sort((a, b) => {
+                    if (a.isMaster) return -1;
+                    if (b.isMaster) return 1;
+                    return 0;
+                });
 
-            // Sort users: master first, then others
-            const sortedUsers = Object.values(users).sort((a, b) => {
-                if (a.isMaster) return -1;
-                if (b.isMaster) return 1;
-                return 0;
-            });
+                console.log('Sorted users:', sortedUsers.length);
 
-            sortedUsers.forEach((user) => {
-                const breakClass = user.requestBreak ? 'has-break-request' : '';
-                const questionClass = user.hasQuestion ? 'has-question' : '';
-                const awayClass = user.isAway ? 'is-away' : '';
-                const masterClass = user.isMaster ? 'is-master' : '';
-                // Master always shows emoji
-                let voteDisplay;
-                if (user.isMaster) {
-                    voteDisplay = '🥺';
-                } else if (user.isAway) {
-                    voteDisplay = '💤';
-                } else if (user.vote === '☕') {
-                    voteDisplay = '☕';
-                } else if (user.vote !== null && user.vote !== 'null') {
-                    voteDisplay = user.vote;
-                } else {
-                    voteDisplay = '🥺';
+                // Distribute users to rows
+                const userRows = distributeUsersToRows(sortedUsers, 8);
+
+                console.log('User rows:', userRows.length);
+
+                let userList = '';
+                userRows.forEach((row, rowIndex) => {
+                    userList += `<div class="user-row">`;
+                    row.forEach((user) => {
+                        userList += renderUserCard(user, true); // Show vote values
+                    });
+                    userList += `</div>`;
+                });
+
+                console.log('Updating users HTML...');
+                document.getElementById("users").innerHTML = userList;
+
+                // Show statistics section and update values
+                if (statistics) {
+                    votesRevealed = true; // Mark votes as revealed
+                    document.getElementById('statisticsSection').style.display = 'flex';
+                    document.getElementById('mostCommonValue').textContent = statistics.median;
+                    document.getElementById('consensusValue').textContent = statistics.consensus;
+                    console.log('Statistics updated:', statistics);
                 }
-                const masterBadge = user.isMaster ? ' 👑' : '';
-                const userAvatar = user.avatar || '👤';
-                const revealedClass = 'vote-revealed'; // Add special class for revealed votes
-
-                // Add vibrate button only for Scrum Master and not for themselves
-                const vibrateButton = (isMaster && !user.isMaster)
-                    ? `<button class="vibrate-btn" onclick="sendVibration('${user.socketId}', event)" title="Notify user">🔔</button>`
-                    : '';
-
-                userList += `
-            <div class="userCard ${user.vote !== null || user.isMaster ? 'voted' : ''} ${breakClass} ${questionClass} ${awayClass} ${masterClass}" data-socket-id="${user.socketId}">
-                ${vibrateButton}
-                <div class="user-card-avatar">${userAvatar}</div>
-                <h3>${user.name}${masterBadge}</h3>
-                <p class="${revealedClass}">${voteDisplay}</p>
-            </div>
-        `;
-            });
-
-            document.getElementById("users").innerHTML = userList;
-            // voters display removed - not needed
-
-            // Show statistics section and update values
-            if (statistics) {
-                votesRevealed = true; // Mark votes as revealed
-                document.getElementById('statisticsSection').style.display = 'flex';
-                document.getElementById('mostCommonValue').textContent = statistics.median;
-                document.getElementById('consensusValue').textContent = statistics.consensus;
+            } catch (error) {
+                console.error('Error in updateVotes:', error);
             }
         });
 
@@ -490,9 +586,8 @@
             console.log('pulseDetected');
         });
 
-        socket.on('votesReset', function (users) {
-            let userList = '';
-
+        socket.on('hideVotes', function (users) {
+            // Hide votes but keep vote data (triggered when someone changes vote after reveal)
             // Sort users: master first, then others
             const sortedUsers = Object.values(users).sort((a, b) => {
                 if (a.isMaster) return -1;
@@ -500,36 +595,61 @@
                 return 0;
             });
 
-            sortedUsers.forEach((user) => {
-                const breakClass = user.requestBreak ? 'has-break-request' : '';
-                const questionClass = user.hasQuestion ? 'has-question' : '';
-                const awayClass = user.isAway ? 'is-away' : '';
-                const masterClass = user.isMaster ? 'is-master' : '';
-                const voteDisplay = user.isMaster ? 'Voted' : (user.isAway ? '💤' : (user.vote !== null ? 'Voted' : 'Not voted'));
-                const masterBadge = user.isMaster ? ' 👑' : '';
-                const userAvatar = user.avatar || '👤';
+            // Distribute users to rows
+            const userRows = distributeUsersToRows(sortedUsers, 8);
 
-                // Add vibrate button only for Scrum Master and not for themselves
-                const vibrateButton = (isMaster && !user.isMaster)
-                    ? `<button class="vibrate-btn" onclick="sendVibration('${user.socketId}', event)" title="Notify user">🔔</button>`
-                    : '';
-
-                userList += `
-            <div class="userCard ${user.vote !== null || user.isMaster ? 'voted' : ''} ${breakClass} ${questionClass} ${awayClass} ${masterClass}" data-socket-id="${user.socketId}">
-                ${vibrateButton}
-                <div class="user-card-avatar">${userAvatar}</div>
-                <h3>${user.name}${masterBadge}</h3>
-                <p>${voteDisplay}</p>
-            </div>
-        `;
+            let userList = '';
+            userRows.forEach((row) => {
+                userList += `<div class="user-row">`;
+                row.forEach((user) => {
+                    userList += renderUserCard(user, false); // Hide vote values
+                });
+                userList += `</div>`;
             });
 
             document.getElementById("users").innerHTML = userList;
-            // voters display removed - not needed
 
-            // Re-enable reveal button and disable reset button
-            document.getElementById('revealBtn').removeAttribute('disabled');
-            document.getElementById('resetBtn').setAttribute('disabled', true);
+            // Hide statistics section and mark votes as not revealed
+            votesRevealed = false;
+            document.getElementById('statisticsSection').style.display = 'none';
+
+            // Keep vote buttons active for users who already voted
+            let voteButtons = document.querySelectorAll('.vote-btn');
+            voteButtons.forEach(button => {
+                button.classList.remove('active');
+            });
+
+            const currentUser = users[socket.id];
+            if (currentUser && currentUser.vote !== null && currentUser.vote !== 'null') {
+                voteButtons.forEach(button => {
+                    if (button.textContent === String(currentUser.vote)) {
+                        button.classList.add('active');
+                    }
+                });
+            }
+        });
+
+        socket.on('votesReset', function (users) {
+            // Sort users: master first, then others
+            const sortedUsers = Object.values(users).sort((a, b) => {
+                if (a.isMaster) return -1;
+                if (b.isMaster) return 1;
+                return 0;
+            });
+
+            // Distribute users to rows
+            const userRows = distributeUsersToRows(sortedUsers, 8);
+
+            let userList = '';
+            userRows.forEach((row) => {
+                userList += `<div class="user-row">`;
+                row.forEach((user) => {
+                    userList += renderUserCard(user, false); // Hide vote values
+                });
+                userList += `</div>`;
+            });
+
+            document.getElementById("users").innerHTML = userList;
 
             // Hide statistics section
             votesRevealed = false; // Reset voting state
@@ -551,7 +671,6 @@
                     }
                 });
             }
-
         });
 
         // Toggle vote function - allows deselecting
@@ -586,20 +705,15 @@
 
         function showVotes() {
             socket.emit('showVotes', currentRoom);
-            document.getElementById('resetBtn').removeAttribute('disabled'); // Butonu aktif hale getir
         }
 
         function resetVotes() {
-            document.getElementById('resetBtn').setAttribute('disabled', true); // Butonu aktif hale getir
-
             let voteButtons = document.querySelectorAll('.vote-btn');
             voteButtons.forEach(button => {
                 button.classList.remove('active');
             });
 
             socket.emit('resetVotes', currentRoom);
-
-
         }
 
         // Break request toggle
@@ -842,6 +956,51 @@
         ✨ What's New?
     </button>
 
+    <!-- Feedback Button -->
+    <button class="feedback-button" id="feedbackButton" onclick="toggleFeedback()">
+        💬 Feedback
+    </button>
+
+    <!-- Feedback Modal -->
+    <div class="feedback-modal" id="feedbackModal">
+        <div class="feedback-modal-content">
+            <div class="feedback-modal-header">
+                <h2 class="feedback-title">Leave feedback</h2>
+                <button class="close-modal" onclick="toggleFeedback()">&times;</button>
+            </div>
+            <p class="feedback-description">Thank you for using Scrum Poker. We are always looking to improve the app, so please leave us some feedback or suggestions to make your experience better.</p>
+            <form id="feedbackForm" onsubmit="submitFeedback(event)">
+                <div class="form-group-feedback">
+                    <label for="rating">How would you rate your experience?</label>
+                    <div class="rating-stars">
+                        <input type="radio" name="rating" id="star5" value="5" required>
+                        <label for="star5" class="star">★</label>
+                        <input type="radio" name="rating" id="star4" value="4">
+                        <label for="star4" class="star">★</label>
+                        <input type="radio" name="rating" id="star3" value="3">
+                        <label for="star3" class="star">★</label>
+                        <input type="radio" name="rating" id="star2" value="2">
+                        <label for="star2" class="star">★</label>
+                        <input type="radio" name="rating" id="star1" value="1">
+                        <label for="star1" class="star">★</label>
+                    </div>
+                </div>
+                <div class="form-group-feedback">
+                    <label for="feedbackEmail">Email (optional)</label>
+                    <input type="email" id="feedbackEmail" placeholder="your.email@example.com">
+                </div>
+                <div class="form-group-feedback">
+                    <label for="feedbackMessage">Tell us what you think</label>
+                    <textarea id="feedbackMessage" rows="5" placeholder="Share your thoughts, suggestions, or report issues..." required></textarea>
+                </div>
+                <button type="submit" class="feedback-submit-btn">Send Feedback</button>
+            </form>
+            <div id="feedbackSuccess" class="feedback-success" style="display: none;">
+                <p>✅ Thank you for your feedback! We appreciate your input.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- What's New Modal -->
     <div class="whats-new-modal" id="whatsNewModal">
         <div class="whats-new-modal-content">
@@ -855,14 +1014,18 @@
                 <li>👤 <strong>Custom Avatars:</strong> Choose from 10 unique avatars that display throughout your session</li>
                 <li>⏰ <strong>6-Hour Session Persistence:</strong> Your session data is saved for 6 hours - close your browser and come back anytime</li>
                 <li>🔄 <strong>5-Minute Reconnection Grace:</strong> If you disconnect temporarily, you have 5 minutes to reconnect without losing your spot</li>
+                <li>💤 <strong>Away Status Indicator:</strong> Disconnected users are marked as "Away" with a sleep emoji and dashed border until they reconnect or are removed</li>
+                <li>🏠 <strong>Recommended Rooms:</strong> Quick access to suggested room names on the login screen for faster joining</li>
                 <li>🔙 <strong>Quick Return to Login:</strong> Click on your user info box in the lobby to instantly return to the login screen</li>
                 <li>☕ <strong>Break & Question Indicators:</strong> Subtle emoji badges appear on user avatars when requesting breaks or asking questions</li>
-                <li>🎯 <strong>Flexible Voting:</strong> Change or deselect your vote anytime before the Scrum Master reveals results</li>
-                <li>📊 <strong>Voting Statistics:</strong> Automatic calculation of Average, Most Common, and Consensus percentage when votes are revealed (excludes Scrum Master votes)</li>
+                <li>🎯 <strong>Flexible Voting:</strong> Change or deselect your vote anytime - when votes are revealed and you change your vote, only the votes are hidden (not deleted)</li>
+                <li>🔄 <strong>Restart Anytime:</strong> Scrum Masters can restart voting at any time, even without revealing votes first</li>
+                <li>📊 <strong>Voting Statistics:</strong> Automatic calculation of Most Common vote and Consensus percentage when votes are revealed (excludes Scrum Master votes)</li>
                 <li>🔔 <strong>MSN Messenger-Style Notifications:</strong> Scrum Masters can send instant vibration alerts to team members with sound effects and visual feedback</li>
                 <li>✨ <strong>Premium Button Interactions:</strong> Satisfying haptic-like feedback animations with color transitions and state changes</li>
                 <li>📈 <strong>Prominent Vote Display:</strong> When votes are revealed, they appear large and clear for easy consensus building</li>
                 <li>🎪 <strong>Long Name Support:</strong> User names of any length display elegantly without truncation throughout the interface</li>
+                <li>👥 <strong>Visual Grouping for Large Teams:</strong> When 9+ users join, cards are arranged in visually distinct rows for better organization</li>
             </ul>
         </div>
     </div>
@@ -938,7 +1101,6 @@
                     class="master-btn danger"
                     onclick="resetVotes()"
                     style="display: none;"
-                    disabled
                 >Restart</button>
             </div>
 

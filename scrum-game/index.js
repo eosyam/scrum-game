@@ -1,7 +1,9 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,6 +20,20 @@ let disconnectTimers = {}; // Track disconnect timers for 5-minute grace period
 const PORT = process.env.PORT || 3000;
 const AWAY_GRACE_PERIOD = 5 * 60 * 1000; // 5 minutes in milliseconds
 
+// Email configuration (Gmail SMTP)
+// To use this, you need to:
+// 1. Enable 2-factor authentication on your Gmail account
+// 2. Generate an "App Password" from Google Account settings
+// 3. Set EMAIL_USER and EMAIL_PASS environment variables or replace the values below
+const emailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER || 'eray.buykor@gmail.com',  // Replace with your email
+        pass: process.env.EMAIL_PASS || ''  // Replace with your App Password (NOT your regular password!)
+    }
+});
+
+app.use(express.json()); // Parse JSON request bodies
 app.use(express.static(path.join(__dirname, '/')));
 
 io.on('connection', (socket) => {
@@ -102,20 +118,13 @@ io.on('connection', (socket) => {
         if (rooms[room] && rooms[room].users[socket.id]) {
             rooms[room].users[socket.id].vote = vote;
 
-            // If votes were revealed and someone changes their vote, reset all clients
+            // If votes were revealed and someone changes their vote, hide votes on all clients
             if (rooms[room].votesRevealed) {
                 rooms[room].votesRevealed = false;
-                // Reset all OTHER votes to null (keep the new vote from current user)
-                for (let userId in rooms[room].users) {
-                    if (userId !== socket.id) {
-                        rooms[room].users[userId].vote = null;
-                    }
-                }
-                // Broadcast reset to all clients
-                io.to(room).emit('votesReset', rooms[room].users);
+                // Send hideVotes event to all clients to hide votes but keep the vote data
+                io.to(room).emit('hideVotes', rooms[room].users);
             } else {
                 // Normal vote update
-                // Kullanıcıların güncellenmiş listesini gönder
                 io.to(room).emit('updateUsers', rooms[room].users);
             }
         }
@@ -300,6 +309,58 @@ io.on('connection', (socket) => {
         }
     });
 
+});
+
+// Feedback endpoint
+app.post('/api/feedback', async (req, res) => {
+    const { rating, email, message, timestamp, room } = req.body;
+
+    // Log feedback to console
+    console.log('=== NEW FEEDBACK RECEIVED ===');
+    console.log('Timestamp:', timestamp);
+    console.log('Rating:', rating, '/ 5 stars');
+    console.log('Email:', email);
+    console.log('Room:', room);
+    console.log('Message:', message);
+    console.log('============================\n');
+
+    // Send email to eray.buykor@gmail.com
+    const mailOptions = {
+        from: process.env.EMAIL_USER || 'eray.buykor@gmail.com',
+        to: 'eray.buykor@gmail.com',
+        subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f7fa; border-radius: 10px;">
+                <h2 style="color: #667eea; border-bottom: 3px solid #667eea; padding-bottom: 10px;">📬 New Scrum Poker Feedback</h2>
+
+                <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 10px 0;"><strong>⭐ Rating:</strong> ${rating} / 5 stars</p>
+                    <p style="margin: 10px 0;"><strong>📧 Email:</strong> ${email}</p>
+                    <p style="margin: 10px 0;"><strong>🏠 Room:</strong> ${room}</p>
+                    <p style="margin: 10px 0;"><strong>🕐 Timestamp:</strong> ${new Date(timestamp).toLocaleString()}</p>
+                </div>
+
+                <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h3 style="color: #48bb78; margin-top: 0;">💬 Message:</h3>
+                    <p style="white-space: pre-wrap; line-height: 1.6;">${message}</p>
+                </div>
+
+                <p style="color: #718096; font-size: 12px; text-align: center; margin-top: 20px;">
+                    Sent from Scrum Poker Feedback System
+                </p>
+            </div>
+        `
+    };
+
+    try {
+        const info = await emailTransporter.sendMail(mailOptions);
+        console.log('✅ Email sent successfully:', info.response);
+        res.status(200).json({ success: true, message: 'Feedback received and email sent' });
+    } catch (error) {
+        console.error('❌ Error sending email:', error.message);
+        // Still return success to user even if email fails (feedback is logged)
+        res.status(200).json({ success: true, message: 'Feedback received (email pending)' });
+    }
 });
 
 server.listen(PORT, () => {
