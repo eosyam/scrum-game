@@ -27,10 +27,10 @@ The feedback system requires email credentials to be set as environment variable
    **Variable 2:**
    ```
    Key: EMAIL_PASS
-   Value: zuezzbjodwhsufyt
+   Value: your-gmail-app-password-here
    ```
 
-   (This is the Gmail App Password you already generated)
+   ⚠️ **SECURITY NOTE:** Replace `your-gmail-app-password-here` with your actual Gmail App Password (16 characters, no spaces)
 
 4. **Save Changes:**
    - Click **"Save Changes"**
