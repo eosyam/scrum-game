@@ -28,8 +28,8 @@ const AWAY_GRACE_PERIOD = 5 * 60 * 1000; // 5 minutes in milliseconds
 const emailTransporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: process.env.EMAIL_USER || 'eray.buykor@gmail.com',  // Replace with your email
-        pass: process.env.EMAIL_PASS || ''  // Replace with your App Password (NOT your regular password!)
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
     }
 });
 
@@ -336,7 +336,7 @@ app.post('/api/feedback', async (req, res) => {
 
     const mailOptions = {
         from: process.env.EMAIL_USER,
-        to: 'eray.buykor@gmail.com',
+        to: process.env.EMAIL_RECIPIENT || process.env.EMAIL_USER,
         subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
         html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f7fa; border-radius: 10px;">
