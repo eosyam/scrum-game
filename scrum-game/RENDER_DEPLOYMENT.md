@@ -21,7 +21,7 @@ The feedback system requires email credentials to be set as environment variable
    **Variable 1:**
    ```
    Key: EMAIL_USER
-   Value: eray.buykor@gmail.com
+   Value: your.email@gmail.com
    ```
 
    **Variable 2:**
@@ -30,7 +30,16 @@ The feedback system requires email credentials to be set as environment variable
    Value: your-gmail-app-password-here
    ```
 
-   ⚠️ **SECURITY NOTE:** Replace `your-gmail-app-password-here` with your actual Gmail App Password (16 characters, no spaces)
+   **Variable 3 (Optional):**
+   ```
+   Key: EMAIL_RECIPIENT
+   Value: feedback@yourcompany.com
+   ```
+
+   ⚠️ **SECURITY NOTE:**
+   - Replace values with your actual Gmail credentials
+   - EMAIL_PASS: 16 characters, no spaces
+   - EMAIL_RECIPIENT: Where feedback emails will be sent (defaults to EMAIL_USER if not set)
 
 4. **Save Changes:**
    - Click **"Save Changes"**
@@ -44,7 +53,45 @@ The feedback system requires email credentials to be set as environment variable
 
 ## Verifying Email Setup
 
-After deployment, test the feedback system:
+### Step 1: Check Server Startup Logs
+
+After deployment, check **Render Logs** immediately. You should see:
+
+**✅ Successful Configuration:**
+```
+Server listening on port 3000
+
+📧 Email Configuration:
+   EMAIL_USER: your.email@gmail.com
+   EMAIL_PASS: ***ufyt
+   EMAIL_RECIPIENT: feedback@yourcompany.com
+   Testing SMTP connection...
+   ✅ SMTP connection successful!
+```
+
+**❌ If SMTP Connection Fails:**
+```
+Server listening on port 3000
+
+📧 Email Configuration:
+   EMAIL_USER: your.email@gmail.com
+   EMAIL_PASS: ***ufyt
+   EMAIL_RECIPIENT: feedback@yourcompany.com
+   Testing SMTP connection...
+   ❌ SMTP connection failed: Invalid login
+   Error code: EAUTH
+   This may cause email sending to fail.
+```
+
+**⚠️ If Environment Variables Not Set:**
+```
+Server listening on port 3000
+
+⚠️ Email not configured (EMAIL_USER and/or EMAIL_PASS not set)
+   Feedback will be logged to console only.
+```
+
+### Step 2: Test Feedback Submission
 
 1. Visit your Render app: `https://scrum-game-ckpj.onrender.com/`
 2. Click the **Feedback** button (bottom left)
@@ -52,16 +99,20 @@ After deployment, test the feedback system:
 4. Check **Render Logs** for:
    ```
    === NEW FEEDBACK RECEIVED ===
+   Timestamp: 2025-10-23T18:38:42.183Z
+   Rating: 4 / 5 stars
+   Email: user@example.com
+   Room: test-room
+   Message: Great app!
+   ============================
+
    📧 Attempting to send email...
-   ✅ Email sent successfully
+      From: your.email@gmail.com
+      To: feedback@yourcompany.com
+      Rating: 4 stars
+   ✅ Email sent successfully: 250 2.0.0 OK
+      Message ID: <abc123@gmail.com>
    ```
-
-If you see:
-```
-⚠️ Email credentials not configured - skipping email send
-```
-
-Then the environment variables weren't set correctly. Double-check the variable names and values.
 
 ---
 
@@ -70,33 +121,88 @@ Then the environment variables weren't set correctly. Double-check the variable 
 - **No .env file needed on Render** - Environment variables are managed through the dashboard
 - **Feedback still works without email** - If email fails, feedback is still logged to console
 - **Emails send in background** - Users don't wait for email to send (instant response)
-- **10-second timeout** - If Gmail doesn't respond in 10 seconds, the email fails gracefully
+- **30-second timeout** - If Gmail doesn't respond in 30 seconds, the email fails gracefully
+- **SMTP connection tested on startup** - Server verifies email config when it starts
 
 ---
 
 ## Troubleshooting
 
-### Email not sending?
+### 1. SMTP Connection Failed at Startup
 
-1. **Check Render Logs:**
-   ```bash
-   # Look for these messages:
-   📧 Attempting to send email...
-   ✅ Email sent successfully
-   ```
+**Error in logs:**
+```
+❌ SMTP connection failed: Invalid login
+Error code: EAUTH
+```
 
-2. **Verify Environment Variables:**
-   - Go to Environment tab
-   - Make sure `EMAIL_USER` and `EMAIL_PASS` are set correctly
-   - No extra spaces or quotes
+**Solutions:**
+- Gmail App Password is incorrect or expired
+- Go to https://myaccount.google.com/apppasswords
+- Delete old app password and generate a new one
+- Update `EMAIL_PASS` on Render with new password (no spaces)
 
-3. **Check Gmail App Password:**
-   - Make sure the App Password is still valid
-   - Regenerate if needed: https://myaccount.google.com/apppasswords
+---
 
-4. **Check Render Free Tier Limits:**
-   - Free tier services spin down after 15 minutes of inactivity
-   - First request after spin-up might be slow
+### 2. Email Timeout (30 seconds)
+
+**Error in logs:**
+```
+❌ Error sending email: Email timeout after 30 seconds
+```
+
+**Possible causes:**
+- Render.com may be blocking outbound SMTP connections
+- Gmail SMTP server is slow or unresponsive
+- Network connectivity issues
+
+**Solutions:**
+- Wait a few minutes and try again (Gmail may be rate-limiting)
+- Check if Render's IP is blocked by Google (rare)
+- Feedback is still logged to console, so data is not lost
+
+---
+
+### 3. Invalid Email Credentials
+
+**Error in logs:**
+```
+❌ Error sending email: Invalid login
+Error code: EAUTH
+```
+
+**Solutions:**
+- Double-check `EMAIL_USER` matches Gmail account
+- Verify `EMAIL_PASS` is App Password (NOT your Gmail password)
+- Make sure 2FA is enabled on Gmail account
+- No extra spaces or quotes in environment variables
+
+---
+
+### 4. Environment Variables Not Set
+
+**Error in logs:**
+```
+⚠️ Email not configured (EMAIL_USER and/or EMAIL_PASS not set)
+```
+
+**Solutions:**
+- Go to Render Dashboard → Environment tab
+- Add `EMAIL_USER` and `EMAIL_PASS` variables
+- Click "Save Changes" (triggers automatic redeploy)
+- Wait 2-3 minutes for deployment to complete
+
+---
+
+### 5. Email Sent But Not Received
+
+**Logs show success but email not in inbox:**
+
+**Solutions:**
+1. Check spam/junk folder
+2. Verify `EMAIL_RECIPIENT` is set correctly (or check EMAIL_USER)
+3. Check Gmail "Sent" folder to confirm email was sent
+4. Gmail may be delaying delivery (wait a few minutes)
 
 ---
 
@@ -104,8 +210,10 @@ Then the environment variables weren't set correctly. Double-check the variable 
 
 ✅ **Feedback endpoint:** `/api/feedback`
 ✅ **Response time:** Instant (email sent in background)
-✅ **Email timeout:** 10 seconds
-✅ **Console logging:** Always enabled
+✅ **SMTP config:** Port 587, TLS, 30s connection timeout
+✅ **Email sending timeout:** 30 seconds
+✅ **Startup verification:** SMTP connection tested on server start
+✅ **Console logging:** Always enabled with detailed diagnostics
 ✅ **Graceful degradation:** Works without email credentials
 
 ---
