@@ -285,6 +285,7 @@
             const modal = document.getElementById('feedbackModal');
             const form = document.getElementById('feedbackForm');
             const success = document.getElementById('feedbackSuccess');
+            const submitBtn = document.getElementById('feedbackSubmitBtn');
 
             if (modal.style.display === 'flex') {
                 modal.style.display = 'none';
@@ -292,14 +293,26 @@
                 form.reset();
                 form.style.display = 'block';
                 success.style.display = 'none';
+
+                // Don't reset cooldown when closing - keep it active
+                // This prevents spam by closing and reopening
             } else {
                 modal.style.display = 'flex';
             }
         }
 
         // Submit feedback form
+        let feedbackCooldownTimer = null;
+
         async function submitFeedback(event) {
             event.preventDefault();
+
+            const submitBtn = document.getElementById('feedbackSubmitBtn');
+
+            // Check if cooldown is active
+            if (submitBtn.disabled) {
+                return;
+            }
 
             const rating = document.querySelector('input[name="rating"]:checked').value;
             const email = document.getElementById('feedbackEmail').value;
@@ -327,6 +340,9 @@
                     document.getElementById('feedbackForm').style.display = 'none';
                     document.getElementById('feedbackSuccess').style.display = 'block';
 
+                    // Start 10-second cooldown
+                    startFeedbackCooldown();
+
                     // Close modal after 2 seconds
                     setTimeout(() => {
                         toggleFeedback();
@@ -338,6 +354,35 @@
                 console.error('Error submitting feedback:', error);
                 alert('Failed to submit feedback. Please try again later.');
             }
+        }
+
+        function startFeedbackCooldown() {
+            const submitBtn = document.getElementById('feedbackSubmitBtn');
+            let secondsLeft = 10;
+
+            // Disable button
+            submitBtn.disabled = true;
+            submitBtn.textContent = `Wait ${secondsLeft}s`;
+
+            // Clear any existing timer
+            if (feedbackCooldownTimer) {
+                clearInterval(feedbackCooldownTimer);
+            }
+
+            // Update countdown every second
+            feedbackCooldownTimer = setInterval(() => {
+                secondsLeft--;
+
+                if (secondsLeft > 0) {
+                    submitBtn.textContent = `Wait ${secondsLeft}s`;
+                } else {
+                    // Re-enable button
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Send Feedback';
+                    clearInterval(feedbackCooldownTimer);
+                    feedbackCooldownTimer = null;
+                }
+            }, 1000);
         }
 
         // Close modal when clicking outside
@@ -993,7 +1038,7 @@
                     <label for="feedbackMessage">Tell us what you think</label>
                     <textarea id="feedbackMessage" rows="5" placeholder="Share your thoughts, suggestions, or report issues..." required></textarea>
                 </div>
-                <button type="submit" class="feedback-submit-btn">Send Feedback</button>
+                <button type="submit" id="feedbackSubmitBtn" class="feedback-submit-btn">Send Feedback</button>
             </form>
             <div id="feedbackSuccess" class="feedback-success" style="display: none;">
                 <p>✅ Thank you for your feedback! We appreciate your input.</p>
