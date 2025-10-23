@@ -26,11 +26,19 @@ const AWAY_GRACE_PERIOD = 5 * 60 * 1000; // 5 minutes in milliseconds
 // 2. Generate an "App Password" from Google Account settings
 // 3. Set EMAIL_USER and EMAIL_PASS environment variables or replace the values below
 const emailTransporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // Use TLS
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
-    }
+    },
+    tls: {
+        rejectUnauthorized: false
+    },
+    connectionTimeout: 30000, // 30 seconds
+    greetingTimeout: 30000,   // 30 seconds
+    socketTimeout: 30000      // 30 seconds
 });
 
 app.use(express.json()); // Parse JSON request bodies
@@ -365,20 +373,48 @@ app.post('/api/feedback', async (req, res) => {
     setTimeout(async () => {
         try {
             console.log('📧 Attempting to send email...');
+            console.log('   From:', process.env.EMAIL_USER);
+            console.log('   To:', process.env.EMAIL_RECIPIENT || process.env.EMAIL_USER);
+            console.log('   Rating:', rating, 'stars');
+
             const info = await Promise.race([
                 emailTransporter.sendMail(mailOptions),
                 new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Email timeout after 10 seconds')), 10000)
+                    setTimeout(() => reject(new Error('Email timeout after 30 seconds')), 30000)
                 )
             ]);
             console.log('✅ Email sent successfully:', info.response);
+            console.log('   Message ID:', info.messageId);
         } catch (error) {
             console.error('❌ Error sending email:', error.message);
+            if (error.code) console.error('   Error code:', error.code);
+            if (error.command) console.error('   Failed command:', error.command);
             console.log('Feedback was logged but email failed to send');
         }
     }, 0);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
     console.log('Server listening on port 3000');
+
+    // Test email configuration
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        console.log('\n📧 Email Configuration:');
+        console.log('   EMAIL_USER:', process.env.EMAIL_USER);
+        console.log('   EMAIL_PASS:', process.env.EMAIL_PASS ? '***' + process.env.EMAIL_PASS.slice(-4) : 'NOT SET');
+        console.log('   EMAIL_RECIPIENT:', process.env.EMAIL_RECIPIENT || process.env.EMAIL_USER);
+        console.log('   Testing SMTP connection...');
+
+        try {
+            await emailTransporter.verify();
+            console.log('   ✅ SMTP connection successful!\n');
+        } catch (error) {
+            console.error('   ❌ SMTP connection failed:', error.message);
+            console.error('   Error code:', error.code);
+            console.error('   This may cause email sending to fail.\n');
+        }
+    } else {
+        console.log('\n⚠️ Email not configured (EMAIL_USER and/or EMAIL_PASS not set)');
+        console.log('   Feedback will be logged to console only.\n');
+    }
 });
