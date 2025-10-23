@@ -315,7 +315,7 @@ io.on('connection', (socket) => {
 app.post('/api/feedback', async (req, res) => {
     const { rating, email, message, timestamp, room } = req.body;
 
-    // Log feedback to console
+    // Log feedback to console immediately
     console.log('=== NEW FEEDBACK RECEIVED ===');
     console.log('Timestamp:', timestamp);
     console.log('Rating:', rating, '/ 5 stars');
@@ -324,9 +324,18 @@ app.post('/api/feedback', async (req, res) => {
     console.log('Message:', message);
     console.log('============================\n');
 
-    // Send email to eray.buykor@gmail.com
+    // Return success immediately - don't wait for email
+    res.status(200).json({ success: true, message: 'Feedback received' });
+
+    // Send email in background (non-blocking)
+    // Check if email credentials are configured
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        console.log('⚠️ Email credentials not configured - skipping email send');
+        return;
+    }
+
     const mailOptions = {
-        from: process.env.EMAIL_USER || 'eray.buykor@gmail.com',
+        from: process.env.EMAIL_USER,
         to: 'eray.buykor@gmail.com',
         subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
         html: `
@@ -352,15 +361,22 @@ app.post('/api/feedback', async (req, res) => {
         `
     };
 
-    try {
-        const info = await emailTransporter.sendMail(mailOptions);
-        console.log('✅ Email sent successfully:', info.response);
-        res.status(200).json({ success: true, message: 'Feedback received and email sent' });
-    } catch (error) {
-        console.error('❌ Error sending email:', error.message);
-        // Still return success to user even if email fails (feedback is logged)
-        res.status(200).json({ success: true, message: 'Feedback received (email pending)' });
-    }
+    // Send email with timeout (don't block response)
+    setTimeout(async () => {
+        try {
+            console.log('📧 Attempting to send email...');
+            const info = await Promise.race([
+                emailTransporter.sendMail(mailOptions),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Email timeout after 10 seconds')), 10000)
+                )
+            ]);
+            console.log('✅ Email sent successfully:', info.response);
+        } catch (error) {
+            console.error('❌ Error sending email:', error.message);
+            console.log('Feedback was logged but email failed to send');
+        }
+    }, 0);
 });
 
 server.listen(PORT, () => {
