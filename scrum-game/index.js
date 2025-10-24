@@ -3,7 +3,6 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
-const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,31 +15,10 @@ const io = socketIo(server, {
 
 let rooms = {};
 let disconnectTimers = {}; // Track disconnect timers for 5-minute grace period
+let feedbacks = []; // In-memory feedback storage
 
 const PORT = process.env.PORT || 3000;
 const AWAY_GRACE_PERIOD = 5 * 60 * 1000; // 5 minutes in milliseconds
-
-// Email configuration (Gmail SMTP)
-// To use this, you need to:
-// 1. Enable 2-factor authentication on your Gmail account
-// 2. Generate an "App Password" from Google Account settings
-// 3. Set EMAIL_USER and EMAIL_PASS environment variables or replace the values below
-const emailTransporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // Use TLS (not SSL)
-    requireTLS: true,
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    },
-    tls: {
-        rejectUnauthorized: false
-    },
-    connectionTimeout: 30000, // 30 seconds
-    greetingTimeout: 30000,   // 30 seconds
-    socketTimeout: 30000      // 30 seconds
-});
 
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.static(path.join(__dirname, '/')));
@@ -333,89 +311,332 @@ app.post('/api/feedback', async (req, res) => {
     console.log('Message:', message);
     console.log('============================\n');
 
-    // Return success immediately - don't wait for email
-    res.status(200).json({ success: true, message: 'Feedback received' });
-
-    // Send email in background (non-blocking)
-    // Check if email credentials are configured
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        console.log('⚠️ Email credentials not configured - skipping email send');
-        return;
-    }
-
-    const mailOptions = {
-        from: process.env.EMAIL_USER,
-        to: process.env.EMAIL_RECIPIENT || process.env.EMAIL_USER,
-        subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
-        html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f7fa; border-radius: 10px;">
-                <h2 style="color: #667eea; border-bottom: 3px solid #667eea; padding-bottom: 10px;">📬 New Scrum Poker Feedback</h2>
-
-                <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <p style="margin: 10px 0;"><strong>⭐ Rating:</strong> ${rating} / 5 stars</p>
-                    <p style="margin: 10px 0;"><strong>📧 Email:</strong> ${email}</p>
-                    <p style="margin: 10px 0;"><strong>🏠 Room:</strong> ${room}</p>
-                    <p style="margin: 10px 0;"><strong>🕐 Timestamp:</strong> ${new Date(timestamp).toLocaleString()}</p>
-                </div>
-
-                <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <h3 style="color: #48bb78; margin-top: 0;">💬 Message:</h3>
-                    <p style="white-space: pre-wrap; line-height: 1.6;">${message}</p>
-                </div>
-
-                <p style="color: #718096; font-size: 12px; text-align: center; margin-top: 20px;">
-                    Sent from Scrum Poker Feedback System
-                </p>
-            </div>
-        `
+    // Store feedback in memory
+    const feedbackEntry = {
+        id: feedbacks.length + 1,
+        timestamp,
+        rating,
+        email,
+        room,
+        message
     };
 
-    // Send email with timeout (don't block response)
-    setTimeout(async () => {
-        try {
-            console.log('📧 Attempting to send email...');
-            console.log('   From:', process.env.EMAIL_USER);
-            console.log('   To:', process.env.EMAIL_RECIPIENT || process.env.EMAIL_USER);
-            console.log('   Rating:', rating, 'stars');
+    feedbacks.push(feedbackEntry);
+    console.log(`✅ Feedback stored (Total: ${feedbacks.length} feedbacks)\n`);
 
-            const info = await Promise.race([
-                emailTransporter.sendMail(mailOptions),
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Email timeout after 30 seconds')), 30000)
-                )
-            ]);
-            console.log('✅ Email sent successfully:', info.response);
-            console.log('   Message ID:', info.messageId);
-        } catch (error) {
-            console.error('❌ Error sending email:', error.message);
-            if (error.code) console.error('   Error code:', error.code);
-            if (error.command) console.error('   Failed command:', error.command);
-            console.log('Feedback was logged but email failed to send');
-        }
-    }, 0);
+    // Return success immediately
+    res.status(200).json({ success: true, message: 'Feedback received and stored' });
+
+    // Send email via Web3Forms (non-blocking)
+    if (process.env.WEB3FORMS_KEY) {
+        setTimeout(async () => {
+            try {
+                console.log('📧 Sending email via Web3Forms...');
+
+                const stars = '⭐'.repeat(rating);
+                const formattedMessage = `
+New Scrum Poker Feedback Received!
+
+${stars} Rating: ${rating} / 5 stars
+
+📧 Contact Email: ${email}
+🏠 Room: ${room}
+🕐 Timestamp: ${new Date(timestamp).toLocaleString()}
+
+💬 Message:
+${message}
+
+---
+Sent from Scrum Poker Feedback System
+                `.trim();
+
+                const response = await fetch('https://api.web3forms.com/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        access_key: process.env.WEB3FORMS_KEY,
+                        subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
+                        from_name: 'Scrum Poker Feedback',
+                        email: email,
+                        message: formattedMessage
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    console.log('✅ Email sent successfully via Web3Forms');
+                } else {
+                    console.error('❌ Web3Forms error:', result.message);
+                }
+            } catch (error) {
+                console.error('❌ Error sending email:', error.message);
+            }
+        }, 0);
+    } else {
+        console.log('⚠️ WEB3FORMS_KEY not set - skipping email send\n');
+    }
 });
 
-server.listen(PORT, async () => {
-    console.log('Server listening on port 3000');
+// GET endpoint to view all feedbacks (JSON API)
+app.get('/api/feedbacks', (req, res) => {
+    res.json({
+        success: true,
+        total: feedbacks.length,
+        feedbacks: feedbacks
+    });
+});
 
-    // Test email configuration
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-        console.log('\n📧 Email Configuration:');
-        console.log('   EMAIL_USER:', process.env.EMAIL_USER);
-        console.log('   EMAIL_PASS:', process.env.EMAIL_PASS ? '***' + process.env.EMAIL_PASS.slice(-4) : 'NOT SET');
-        console.log('   EMAIL_RECIPIENT:', process.env.EMAIL_RECIPIENT || process.env.EMAIL_USER);
-        console.log('   Testing SMTP connection...');
-
-        try {
-            await emailTransporter.verify();
-            console.log('   ✅ SMTP connection successful!\n');
-        } catch (error) {
-            console.error('   ❌ SMTP connection failed:', error.message);
-            console.error('   Error code:', error.code);
-            console.error('   This may cause email sending to fail.\n');
+// HTML page to view feedbacks
+app.get('/feedbacks', (req, res) => {
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback Dashboard - Scrum Poker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .stats {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 10px 20px;
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #856404;
+            text-align: center;
+        }
+        .feedback-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .feedback-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        .feedback-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .rating {
+            font-size: 1.5rem;
+        }
+        .timestamp {
+            color: #999;
+            font-size: 0.9rem;
+        }
+        .feedback-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #667eea;
+        }
+        .feedback-message {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        .no-feedbacks {
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .no-feedbacks-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+        .no-feedbacks-text {
+            color: #666;
+            font-size: 1.2rem;
+        }
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s;
+        }
+        .refresh-btn:hover {
+            background: #5568d3;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📬 Feedback Dashboard</h1>
+
+        <div class="warning">
+            ⚠️ Note: Feedbacks are stored in memory and will be cleared on server restart
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-number" id="total-count">0</div>
+                <div class="stat-label">Total Feedbacks</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="avg-rating">0.0</div>
+                <div class="stat-label">Average Rating</div>
+            </div>
+        </div>
+
+        <div id="feedbacks-container"></div>
+    </div>
+
+    <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+
+    <script>
+        async function loadFeedbacks() {
+            try {
+                const response = await fetch('/api/feedbacks');
+                const data = await response.json();
+
+                document.getElementById('total-count').textContent = data.total;
+
+                if (data.feedbacks.length > 0) {
+                    const avgRating = (data.feedbacks.reduce((sum, f) => sum + f.rating, 0) / data.feedbacks.length).toFixed(1);
+                    document.getElementById('avg-rating').textContent = avgRating;
+
+                    const container = document.getElementById('feedbacks-container');
+                    container.innerHTML = data.feedbacks
+                        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                        .map(feedback => {
+                            const stars = '⭐'.repeat(feedback.rating);
+                            const date = new Date(feedback.timestamp).toLocaleString();
+
+                            return \`
+                                <div class="feedback-card">
+                                    <div class="feedback-header">
+                                        <div class="rating">\${stars}</div>
+                                        <div class="timestamp">\${date}</div>
+                                    </div>
+                                    <div class="feedback-info">
+                                        <div class="info-item">
+                                            <span class="info-label">📧 Email:</span>
+                                            <span>\${feedback.email}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="info-label">🏠 Room:</span>
+                                            <span>\${feedback.room}</span>
+                                        </div>
+                                    </div>
+                                    <div class="feedback-message">
+                                        💬 \${feedback.message}
+                                    </div>
+                                </div>
+                            \`;
+                        }).join('');
+                } else {
+                    document.getElementById('feedbacks-container').innerHTML = \`
+                        <div class="no-feedbacks">
+                            <div class="no-feedbacks-icon">📭</div>
+                            <div class="no-feedbacks-text">No feedbacks yet</div>
+                        </div>
+                    \`;
+                }
+            } catch (error) {
+                console.error('Error loading feedbacks:', error);
+            }
+        }
+
+        loadFeedbacks();
+    </script>
+</body>
+</html>
+    `;
+    res.send(html);
+});
+
+server.listen(PORT, () => {
+    console.log('Server listening on port 3000');
+    console.log('\n📋 Feedback System: Active');
+    console.log('   📊 View feedbacks dashboard: /feedbacks');
+    console.log('   📡 API endpoint: /api/feedbacks');
+
+    if (process.env.WEB3FORMS_KEY) {
+        console.log('   📧 Email notifications: Enabled (Web3Forms)');
     } else {
-        console.log('\n⚠️ Email not configured (EMAIL_USER and/or EMAIL_PASS not set)');
-        console.log('   Feedback will be logged to console only.\n');
+        console.log('   ⚠️  Email notifications: Disabled (WEB3FORMS_KEY not set)');
     }
+
+    console.log('   💾 Storage: In-memory (reset on server restart)\n');
 });
