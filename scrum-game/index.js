@@ -21,6 +21,16 @@ const PORT = process.env.PORT || 3000;
 const AWAY_GRACE_PERIOD = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 app.use(express.json()); // Parse JSON request bodies
+
+// Health check endpoint for Render (must be before static files)
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
+});
+
 app.use(express.static(path.join(__dirname, '/')));
 
 io.on('connection', (socket) => {
@@ -626,11 +636,15 @@ app.get('/feedbacks', (req, res) => {
     res.send(html);
 });
 
-server.listen(PORT, () => {
-    console.log('Server listening on port 3000');
+// Bind to 0.0.0.0 for Render deployment (allows external connections)
+const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+
+server.listen(PORT, HOST, () => {
+    console.log(`Server listening on ${HOST}:${PORT}`);
     console.log('\n📋 Feedback System: Active');
     console.log('   📊 View feedbacks dashboard: /feedbacks');
     console.log('   📡 API endpoint: /api/feedbacks');
+    console.log('   ❤️  Health check: /health');
 
     if (process.env.WEB3FORMS_KEY) {
         console.log('   📧 Email notifications: Enabled (Web3Forms)');

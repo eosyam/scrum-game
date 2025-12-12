@@ -1,2 +1,5 @@
 /node_modules
 .claude/settings.local.json
+
+# Windows null device file (prevent accidental creation)
+NUL
