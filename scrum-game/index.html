@@ -3,76 +3,34 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta
-        http-equiv="X-UA-Compatible"
-        content="IE=edge"
-    >
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scrum Poker - Agile Scrum Estimation Tool</title>
-    <meta
-        name="description"
-        content="Engage in interactive, fun, and effective Scrum planning with our free online Agile Scrum Master Game. Perfect for remote teams, this tool simplifies your Agile estimation and planning process."
-    >
-    <meta
-        name="keywords"
-        content="Scrum Game, Agile Planning Tool, Free Scrum Master Game, Online Estimation Tool, Agile Project Management, Scrum Planning Poker, Agile Collaboration Tool"
-    >
-    <meta
-        name="author"
-        content="Hakan SARIER"
-    >
+    <meta name="description"
+        content="Engage in interactive, fun, and effective Scrum planning with our free online Agile Scrum Master Game. Perfect for remote teams, this tool simplifies your Agile estimation and planning process.">
+    <meta name="keywords"
+        content="Scrum Game, Agile Planning Tool, Free Scrum Master Game, Online Estimation Tool, Agile Project Management, Scrum Planning Poker, Agile Collaboration Tool">
+    <meta name="author" content="Hakan SARIER">
 
     <!-- Open Graph / Facebook -->
-    <meta
-        property="og:type"
-        content="website"
-    >
-    <meta
-        property="og:url"
-        content="https://scrum-oiyf.onrender.com/"
-    >
-    <meta
-        property="og:title"
-        content="Agile Scrum Master Game - Free Online Collaborative Tool"
-    >
-    <meta
-        property="og:description"
-        content="Interactive and engaging Scrum planning tool for Agile teams. Simplify your estimation process with our free online game."
-    >
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://scrum-oiyf.onrender.com/">
+    <meta property="og:title" content="Agile Scrum Master Game - Free Online Collaborative Tool">
+    <meta property="og:description"
+        content="Interactive and engaging Scrum planning tool for Agile teams. Simplify your estimation process with our free online game.">
     <!-- <meta property="og:image" content="https://scrum-oiyf.onrender.com/image.jpg"> -->
 
     <!-- Twitter -->
-    <meta
-        property="twitter:card"
-        content="summary_large_image"
-    >
-    <meta
-        property="twitter:url"
-        content="https://scrum-oiyf.onrender.com/"
-    >
-    <meta
-        property="twitter:title"
-        content="Agile Scrum Master Game - Free Online Collaborative Tool"
-    >
-    <meta
-        property="twitter:description"
-        content="Interactive and engaging Scrum planning tool for Agile teams. Simplify your estimation process with our free online game."
-    >
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://scrum-oiyf.onrender.com/">
+    <meta property="twitter:title" content="Agile Scrum Master Game - Free Online Collaborative Tool">
+    <meta property="twitter:description"
+        content="Interactive and engaging Scrum planning tool for Agile teams. Simplify your estimation process with our free online game.">
     <!-- <meta property="twitter:image" content="https://scrum-oiyf.onrender.com/image.jpg"> -->
 
     <!-- Favicon -->
-    <link
-        rel="icon"
-        type="image/x-icon"
-        href="favicon.png"
-    >
-    <link
-        rel="stylesheet"
-        href="index.css"
-    >
+    <link rel="icon" type="image/x-icon" href="favicon.png">
+    <link rel="stylesheet" href="index.css">
     <script src="/socket.io/socket.io.js"></script>
     <script>
 
@@ -82,7 +40,7 @@
         let userName = '';
         let selectedAvatar = '👤'; // Default avatar
         let votesRevealed = false; // Track if votes are currently revealed
-        const SESSION_DURATION = 6 * 60 * 60 * 1000; // 6 saat
+        const SESSION_DURATION = 365 * 24 * 60 * 60 * 1000; // 1 yıl - kalıcı session
 
         // Audio setup for mobile browser support
         let notificationAudio = null;
@@ -113,7 +71,7 @@
 
             // Setup avatar selection
             document.querySelectorAll('.avatar-option').forEach(option => {
-                option.addEventListener('click', function() {
+                option.addEventListener('click', function () {
                     document.querySelectorAll('.avatar-option').forEach(opt => {
                         opt.classList.remove('selected');
                     });
@@ -386,7 +344,7 @@
         }
 
         // Close modal when clicking outside
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             const whatsNewModal = document.getElementById('whatsNewModal');
             const feedbackModal = document.getElementById('feedbackModal');
 
@@ -879,7 +837,7 @@
         }
 
         // Receive vibration
-        socket.on('receiveVibration', function(data) {
+        socket.on('receiveVibration', function (data) {
             // Play MSN-style notification sound (always play, regardless of DOM state)
             playNotificationSound();
 
@@ -958,6 +916,10 @@
                         <span>👨‍💼</span>
                     </label>
                     <label class="avatar-option">
+                        <input type="radio" name="avatar" value="👩‍💼">
+                        <span>👩‍💼</span>
+                    </label>
+                    <label class="avatar-option">
                         <input type="radio" name="avatar" value="👩‍💻">
                         <span>👩‍💻</span>
                     </label>
@@ -970,8 +932,24 @@
                         <span>🧙‍♂️</span>
                     </label>
                     <label class="avatar-option">
+                        <input type="radio" name="avatar" value="🧙‍♀️">
+                        <span>🧙‍♀️</span>
+                    </label>
+                    <label class="avatar-option">
                         <input type="radio" name="avatar" value="🦸">
                         <span>🦸</span>
+                    </label>
+                    <label class="avatar-option">
+                        <input type="radio" name="avatar" value="🦸‍♀️">
+                        <span>🦸‍♀️</span>
+                    </label>
+                    <label class="avatar-option">
+                        <input type="radio" name="avatar" value="🥷">
+                        <span>🥷</span>
+                    </label>
+                    <label class="avatar-option">
+                        <input type="radio" name="avatar" value="👽">
+                        <span>👽</span>
                     </label>
                     <label class="avatar-option">
                         <input type="radio" name="avatar" value="🐱">
@@ -1013,7 +991,8 @@
                 <h2 class="feedback-title">Leave feedback</h2>
                 <button class="close-modal" onclick="toggleFeedback()">&times;</button>
             </div>
-            <p class="feedback-description">Thank you for using Scrum Poker. We are always looking to improve the app, so please leave us some feedback or suggestions to make your experience better.</p>
+            <p class="feedback-description">Thank you for using Scrum Poker. We are always looking to improve the app,
+                so please leave us some feedback or suggestions to make your experience better.</p>
             <form id="feedbackForm" onsubmit="submitFeedback(event)">
                 <div class="form-group-feedback">
                     <label for="rating">How would you rate your experience?</label>
@@ -1036,7 +1015,8 @@
                 </div>
                 <div class="form-group-feedback">
                     <label for="feedbackMessage">Tell us what you think</label>
-                    <textarea id="feedbackMessage" rows="5" placeholder="Share your thoughts, suggestions, or report issues..." required></textarea>
+                    <textarea id="feedbackMessage" rows="5"
+                        placeholder="Share your thoughts, suggestions, or report issues..." required></textarea>
                 </div>
                 <button type="submit" id="feedbackSubmitBtn" class="feedback-submit-btn">Send Feedback</button>
             </form>
@@ -1054,23 +1034,40 @@
                 <button class="close-modal" onclick="toggleWhatsNew()">&times;</button>
             </div>
             <ul class="whats-new-list">
-                <li>🎨 <strong>Complete UI/UX Redesign:</strong> Modern, clean interface with smooth animations and premium button interactions</li>
-                <li>🌓 <strong>Enhanced Dark Mode:</strong> Elegant theme toggle with smooth transitions between light and dark modes</li>
-                <li>👤 <strong>Custom Avatars:</strong> Choose from 10 unique avatars that display throughout your session</li>
-                <li>⏰ <strong>6-Hour Session Persistence:</strong> Your session data is saved for 6 hours - close your browser and come back anytime</li>
-                <li>🔄 <strong>5-Minute Reconnection Grace:</strong> If you disconnect temporarily, you have 5 minutes to reconnect without losing your spot</li>
-                <li>💤 <strong>Away Status Indicator:</strong> Disconnected users are marked as "Away" with a sleep emoji and dashed border until they reconnect or are removed</li>
-                <li>🏠 <strong>Recommended Rooms:</strong> Quick access to suggested room names on the login screen for faster joining</li>
-                <li>🔙 <strong>Quick Return to Login:</strong> Click on your user info box in the lobby to instantly return to the login screen</li>
-                <li>☕ <strong>Break & Question Indicators:</strong> Subtle emoji badges appear on user avatars when requesting breaks or asking questions</li>
-                <li>🎯 <strong>Flexible Voting:</strong> Change or deselect your vote anytime - when votes are revealed and you change your vote, only the votes are hidden (not deleted)</li>
-                <li>🔄 <strong>Restart Anytime:</strong> Scrum Masters can restart voting at any time, even without revealing votes first</li>
-                <li>📊 <strong>Voting Statistics:</strong> Automatic calculation of Most Common vote and Consensus percentage when votes are revealed (excludes Scrum Master votes)</li>
-                <li>🔔 <strong>MSN Messenger-Style Notifications:</strong> Scrum Masters can send instant vibration alerts to team members with sound effects and visual feedback</li>
-                <li>✨ <strong>Premium Button Interactions:</strong> Satisfying haptic-like feedback animations with color transitions and state changes</li>
-                <li>📈 <strong>Prominent Vote Display:</strong> When votes are revealed, they appear large and clear for easy consensus building</li>
-                <li>🎪 <strong>Long Name Support:</strong> User names of any length display elegantly without truncation throughout the interface</li>
-                <li>👥 <strong>Visual Grouping for Large Teams:</strong> When 9+ users join, cards are arranged in visually distinct rows for better organization</li>
+                <li>🎨 <strong>Complete UI/UX Redesign:</strong> Modern, clean interface with smooth animations and
+                    premium button interactions</li>
+                <li>🌓 <strong>Enhanced Dark Mode:</strong> Elegant theme toggle with smooth transitions between light
+                    and dark modes</li>
+                <li>👤 <strong>Custom Avatars:</strong> Choose from 10 unique avatars that display throughout your
+                    session</li>
+                <li>⏰ <strong>6-Hour Session Persistence:</strong> Your session data is saved for 6 hours - close your
+                    browser and come back anytime</li>
+                <li>🔄 <strong>5-Minute Reconnection Grace:</strong> If you disconnect temporarily, you have 5 minutes
+                    to reconnect without losing your spot</li>
+                <li>💤 <strong>Away Status Indicator:</strong> Disconnected users are marked as "Away" with a sleep
+                    emoji and dashed border until they reconnect or are removed</li>
+                <li>🏠 <strong>Recommended Rooms:</strong> Quick access to suggested room names on the login screen for
+                    faster joining</li>
+                <li>🔙 <strong>Quick Return to Login:</strong> Click on your user info box in the lobby to instantly
+                    return to the login screen</li>
+                <li>☕ <strong>Break & Question Indicators:</strong> Subtle emoji badges appear on user avatars when
+                    requesting breaks or asking questions</li>
+                <li>🎯 <strong>Flexible Voting:</strong> Change or deselect your vote anytime - when votes are revealed
+                    and you change your vote, only the votes are hidden (not deleted)</li>
+                <li>🔄 <strong>Restart Anytime:</strong> Scrum Masters can restart voting at any time, even without
+                    revealing votes first</li>
+                <li>📊 <strong>Voting Statistics:</strong> Automatic calculation of Most Common vote and Consensus
+                    percentage when votes are revealed (excludes Scrum Master votes)</li>
+                <li>🔔 <strong>MSN Messenger-Style Notifications:</strong> Scrum Masters can send instant vibration
+                    alerts to team members with sound effects and visual feedback</li>
+                <li>✨ <strong>Premium Button Interactions:</strong> Satisfying haptic-like feedback animations with
+                    color transitions and state changes</li>
+                <li>📈 <strong>Prominent Vote Display:</strong> When votes are revealed, they appear large and clear for
+                    easy consensus building</li>
+                <li>🎪 <strong>Long Name Support:</strong> User names of any length display elegantly without truncation
+                    throughout the interface</li>
+                <li>👥 <strong>Visual Grouping for Large Teams:</strong> When 9+ users join, cards are arranged in
+                    visually distinct rows for better organization</li>
             </ul>
         </div>
     </div>
@@ -1134,19 +1131,11 @@
             <div class="divider"></div>
 
             <div class="section-master master-controls d-none">
-                <button
-                    id="revealBtn"
-                    class="master-btn"
-                    onclick="showVotes()"
-                    style="display: none;"
-                >Reveal Votes</button>
+                <button id="revealBtn" class="master-btn" onclick="showVotes()" style="display: none;">Reveal
+                    Votes</button>
 
-                <button
-                    id="resetBtn"
-                    class="master-btn danger"
-                    onclick="resetVotes()"
-                    style="display: none;"
-                >Restart</button>
+                <button id="resetBtn" class="master-btn danger" onclick="resetVotes()"
+                    style="display: none;">Restart</button>
             </div>
 
             <div id="userContainer">
