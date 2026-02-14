@@ -46,6 +46,10 @@ io.on('connection', (socket) => {
 
     socket.on('joinRoom', ({ room, name, isMaster, avatar }) => {
 
+        // Validate input length
+        if (room && room.length > 50) room = room.substring(0, 50);
+        if (name && name.length > 30) name = name.substring(0, 30);
+
         room = encodeHTML(room);
         name = encodeHTML(name);
         avatar = encodeHTML(avatar || '👤');
@@ -235,6 +239,12 @@ io.on('connection', (socket) => {
                     if (rooms[room] && rooms[room].users[socket.id]) {
                         delete rooms[room].users[socket.id];
                         io.to(room).emit('updateUsers', rooms[room].users);
+
+                        // If room is empty, delete it to prevent memory leak
+                        if (Object.keys(rooms[room].users).length === 0) {
+                            delete rooms[room];
+                            console.log(`Room ${room} deleted as it is empty`);
+                        }
                     }
 
                     // Clean up timer reference
@@ -332,6 +342,12 @@ app.post('/api/feedback', async (req, res) => {
     };
 
     feedbacks.push(feedbackEntry);
+
+    // Limit stored feedbacks to prevent memory exhaustion
+    if (feedbacks.length > 100) {
+        feedbacks.shift(); // Remove oldest feedback
+    }
+
     console.log(`✅ Feedback stored (Total: ${feedbacks.length} feedbacks)\n`);
 
     // Return success immediately
