@@ -298,6 +298,15 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Phase 2: Emoji Reactions
+    socket.on('sendReaction', ({ room, emoji }) => {
+        room = encodeHTML(room);
+        if (rooms[room] && rooms[room].users[socket.id]) {
+            const userName = rooms[room].users[socket.id].name;
+            io.to(room).emit('receiveReaction', { userName, emoji });
+        }
+    });
+
     socket.on('sendVibration', ({ room, targetSocketId }) => {
 
         room = encodeHTML(room);

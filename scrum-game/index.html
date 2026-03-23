@@ -258,6 +258,42 @@
         function toggleFeedback() {
             const modal = document.getElementById('feedbackModal');
             const form = document.getElementById('feedbackForm');
+
+            if (modal.style.display === 'flex') {
+                modal.style.display = 'none';
+                form.reset();
+                document.getElementById('feedbackSuccess').style.display = 'none';
+                form.style.display = 'block';
+            } else {
+                modal.style.display = 'flex';
+            }
+        }
+
+        // Handle Enter key on login screen
+        function handleLoginKeyPress(event) {
+            if (event.key === 'Enter') {
+                joinRoom();
+            }
+        }
+
+        // Handle ESC key for modals
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const feedbackModal = document.getElementById('feedbackModal');
+                const whatsNewModal = document.getElementById('whatsNewModal');
+                const coffeeOverlay = document.getElementById('coffeeOverlay');
+
+                if (feedbackModal && feedbackModal.style.display === 'flex') {
+                    toggleFeedback();
+                }
+                if (whatsNewModal && whatsNewModal.style.display === 'flex') {
+                    toggleWhatsNew();
+                }
+                if (coffeeOverlay && coffeeOverlay.style.display === 'flex') {
+                    hideCoffeeBreak();
+                }
+            }
+        });
             const success = document.getElementById('feedbackSuccess');
             const submitBtn = document.getElementById('feedbackSubmitBtn');
 
@@ -613,6 +649,9 @@
                     document.getElementById('consensusValue').textContent = statistics.consensus;
                     console.log('Statistics updated:', statistics);
 
+                    // Phase 1: Trigger visual reactions based on consensus
+                    analyzeAndReact(users, statistics);
+
                     // Session history (#11): record this round
                     const storyText = document.getElementById('storyInput')?.value || document.getElementById('storyDisplay')?.textContent || '';
                     const roundVotes = {};
@@ -628,6 +667,15 @@
                         consensus: statistics.consensus,
                         timestamp: new Date().toLocaleTimeString()
                     });
+                    // Phase 2: Show Reaction Bar
+                    document.getElementById('reactionBar').style.display = 'flex';
+
+                    // Phase 2: Update Team Chemistry Stats
+                    const storiesCount = votingHistory.length;
+                    const perfectCount = votingHistory.filter(h => h.consensus === '100%').length;
+                    document.getElementById('chemistryValue').textContent = `${storiesCount} stories, ${perfectCount} perfects 🎯`;
+                    document.getElementById('teamChemistryCard').style.display = 'flex';
+
                     // Show copy button
                     document.getElementById('copyHistoryBtn').style.display = 'inline-flex';
                 }
@@ -666,6 +714,7 @@
             // Hide statistics section and mark votes as not revealed
             votesRevealed = false;
             document.getElementById('statisticsSection').style.display = 'none';
+            document.getElementById('reactionBar').style.display = 'none';
 
             // Keep vote buttons active for users who already voted
             let voteButtons = document.querySelectorAll('.vote-btn');
@@ -708,6 +757,7 @@
             // Hide statistics section
             votesRevealed = false; // Reset voting state
             document.getElementById('statisticsSection').style.display = 'none';
+            document.getElementById('reactionBar').style.display = 'none';
             document.getElementById('mostCommonValue').textContent = '-';
             document.getElementById('consensusValue').textContent = '-';
 
@@ -919,14 +969,31 @@
             }, 300);
         }
 
+        // Phase 2.5: Auto-linkification for URLs
+        function linkify(text) {
+            if (!text) return '';
+            // Basic URL regex
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            return text.replace(urlRegex, function(url) {
+                return `<a href="${url}" target="_blank" class="story-link" title="Open link in new tab">${url}</a>`;
+            });
+        }
+
         socket.on('storyUpdated', function (story) {
             const storyInput = document.getElementById('storyInput');
             const storyDisplay = document.getElementById('storyDisplay');
             if (storyInput && !isMaster) {
-                storyDisplay.textContent = story || 'No story set';
+                if (story && story.trim() !== '') {
+                    storyDisplay.innerHTML = linkify(story);
+                } else {
+                    storyDisplay.innerHTML = '<span class="empty-story">No objective set. Waiting for Scrum Master...</span>';
+                }
             }
             if (storyInput && isMaster) {
-                storyInput.value = story || '';
+                // Only update if it doesn't match current value (prevents cursor jump while typing)
+                if (document.activeElement !== storyInput) {
+                    storyInput.value = story || '';
+                }
             }
         });
 
@@ -958,6 +1025,225 @@
             });
         }
 
+        // ===== PHASE 1: VISUAL POLISH =====
+
+        // --- Confetti Engine ---
+        function launchConfetti(duration = 2500) {
+            let canvas = document.getElementById('confettiCanvas');
+            if (!canvas) {
+                canvas = document.createElement('canvas');
+                canvas.id = 'confettiCanvas';
+                document.body.appendChild(canvas);
+            }
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const colors = ['#48bb78', '#667eea', '#f6ad55', '#fc8181', '#b794f4', '#63b3ed', '#fbbf24'];
+            const particles = [];
+
+            for (let i = 0; i < 120; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height - canvas.height,
+                    w: Math.random() * 10 + 5,
+                    h: Math.random() * 6 + 3,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: Math.random() * 3 + 2,
+                    rotation: Math.random() * 360,
+                    rotationSpeed: (Math.random() - 0.5) * 10,
+                    opacity: 1
+                });
+            }
+
+            const startTime = Date.now();
+            function animate() {
+                const elapsed = Date.now() - startTime;
+                if (elapsed > duration) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    canvas.remove();
+                    return;
+                }
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const fadeStart = duration - 500;
+
+                particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.05;
+                    p.rotation += p.rotationSpeed;
+                    if (elapsed > fadeStart) {
+                        p.opacity = Math.max(0, 1 - (elapsed - fadeStart) / 500);
+                    }
+
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rotation * Math.PI / 180);
+                    ctx.globalAlpha = p.opacity;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+                    ctx.restore();
+                });
+
+                requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        // --- Show Reaction Banner ---
+        function showReaction(type, emoji, text) {
+            // Remove any existing reaction
+            document.querySelectorAll('.reaction-overlay').forEach(el => el.remove());
+
+            const overlay = document.createElement('div');
+            overlay.className = 'reaction-overlay';
+            overlay.innerHTML = `<div class="reaction-banner ${type}">${emoji} ${text}</div>`;
+            document.body.appendChild(overlay);
+
+            setTimeout(() => { overlay.remove(); }, 3500);
+        }
+
+        // --- Coffee Break Overlay ---
+        function showCoffeeBreak() {
+            const overlay = document.createElement('div');
+            overlay.className = 'coffee-overlay';
+            overlay.innerHTML = `
+                <div class="coffee-emoji">☕</div>
+                <div class="coffee-text">Coffee Break!</div>
+                <div class="coffee-subtext">Everyone voted for a break. Click anywhere to dismiss.</div>
+            `;
+            overlay.addEventListener('click', () => overlay.remove());
+            document.body.appendChild(overlay);
+            setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 8000);
+        }
+
+        // --- Screen Shake ---
+        function triggerScreenShake() {
+            document.body.classList.add('screen-shake');
+            setTimeout(() => document.body.classList.remove('screen-shake'), 700);
+        }
+
+        // --- Card Flip Animation ---
+        function triggerCardFlip() {
+            document.querySelectorAll('.userCard').forEach(card => {
+                card.classList.add('card-flip-enter');
+            });
+            // Clean up animation classes after they finish
+            setTimeout(() => {
+                document.querySelectorAll('.userCard').forEach(card => {
+                    card.classList.remove('card-flip-enter');
+                });
+            }, 1500);
+        }
+
+        // --- Consensus Detection & Reaction Trigger ---
+        const FIBONACCI = [0, 1, 2, 3, 5, 8, 13, 21, 40];
+
+        function analyzeAndReact(users, statistics) {
+            // Collect non-master, non-away votes
+            const votes = [];
+            Object.values(users).forEach(u => {
+                if (!u.isMaster && !u.isAway && u.vote !== null && u.vote !== undefined) {
+                    votes.push(u.vote);
+                }
+            });
+
+            if (votes.length === 0) return;
+
+            // Trigger card flip animation
+            triggerCardFlip();
+
+            // Check for all coffee
+            const allCoffee = votes.every(v => v === '☕');
+            if (allCoffee) {
+                setTimeout(() => {
+                    showReaction('coffee-time', '☕', 'Coffee Break!');
+                    showCoffeeBreak();
+                }, 600);
+                return;
+            }
+
+            // Filter numeric votes only for consensus analysis
+            const numericVotes = votes.filter(v => typeof v === 'number' || !isNaN(Number(v))).map(Number);
+            if (numericVotes.length === 0) return;
+
+            const uniqueVotes = [...new Set(numericVotes)];
+            const minVote = Math.min(...numericVotes);
+            const maxVote = Math.max(...numericVotes);
+
+            // Perfect consensus: everyone voted the same
+            if (uniqueVotes.length === 1) {
+                setTimeout(() => {
+                    showReaction('perfect', '🎯', 'Perfect Consensus!');
+                    launchConfetti(3000);
+                }, 600);
+                return;
+            }
+
+            // Close call: all votes within 1 Fibonacci step
+            const minIdx = FIBONACCI.indexOf(minVote);
+            const maxIdx = FIBONACCI.indexOf(maxVote);
+            if (minIdx !== -1 && maxIdx !== -1 && (maxIdx - minIdx) <= 1) {
+                setTimeout(() => {
+                    showReaction('close-call', '👏', 'Almost There!');
+                }, 600);
+                return;
+            }
+
+            // Big difference: spread of 3+ Fibonacci steps
+            if (minIdx !== -1 && maxIdx !== -1 && (maxIdx - minIdx) >= 3) {
+                setTimeout(() => {
+                    triggerScreenShake();
+                    showReaction('big-diff', '😳', `${minVote} vs ${maxVote} — Houston, we have a problem!`);
+                }, 600);
+                return;
+            }
+        }
+
+        // --- Phase 2: Team Chemistry & Reactions ---
+        function sendEmoji(emoji) {
+            socket.emit('sendReaction', { room: currentRoom, emoji: emoji });
+            // Add a little pop effect to the button locally
+            event.target.style.transform = 'scale(1.5)';
+            setTimeout(() => { event.target.style.transform = ''; }, 200);
+        }
+
+        socket.on('receiveReaction', function ({ userName, emoji }) {
+            // Find the user's card to float the emoji from there
+            const userRows = document.querySelectorAll('.user-row');
+            let userCard = null;
+            userRows.forEach(row => {
+                const cards = row.querySelectorAll('.userCard');
+                cards.forEach(card => {
+                    const nameEl = card.querySelector('h3');
+                    if (nameEl && nameEl.textContent === userName) {
+                        userCard = card;
+                    }
+                });
+            });
+
+            const emojiEl = document.createElement('div');
+            emojiEl.className = 'floating-emoji';
+            emojiEl.textContent = emoji;
+
+            if (userCard) {
+                userCard.appendChild(emojiEl);
+            } else {
+                // Fallback to center of screen if card not found (e.g. they are a spectator? unlikely)
+                document.body.appendChild(emojiEl);
+                emojiEl.style.position = 'fixed';
+                emojiEl.style.left = '50%';
+                emojiEl.style.top = '50%';
+            }
+
+            // Cleanup after animation
+            setTimeout(() => {
+                if (emojiEl.parentNode) emojiEl.parentNode.removeChild(emojiEl);
+            }, 2000);
+        });
+
     </script>
 
 
@@ -983,12 +1269,12 @@
 
             <div class="form-group">
                 <label for="username">Your Name</label>
-                <input type="text" id="username" placeholder="Enter your name" required>
+                <input type="text" id="username" placeholder="Enter your name" onkeypress="handleLoginKeyPress(event)" required>
             </div>
 
             <div class="form-group">
                 <label for="room">Room Name</label>
-                <input type="text" id="room" value="ecm" placeholder="Enter room name" required>
+                <input type="text" id="room" value="ecm" placeholder="Enter room name" onkeypress="handleLoginKeyPress(event)" required>
             </div>
 
             <div class="recommended-rooms-container">
@@ -1134,30 +1420,18 @@
                 <button class="close-modal" onclick="toggleWhatsNew()" aria-label="Close what's new modal">&times;</button>
             </div>
             <ul class="whats-new-list">
+                <li class="whats-new-version">v1.4 — March 2026</li>
+                <li>🎯 <strong>Target/Story Banner:</strong> Add Jira links or story objectives that appear neatly in the top header. They auto-linkify for easy access!</li>
+                <li>🤣 <strong>Emoji Reactions:</strong> Drop quick reactions (😱, 🤔, 🔥, etc.) after votes are revealed! Emojis float up dynamically for everyone in the room.</li>
+                <li>🎉 <strong>Visual Polish:</strong> Beautiful 3D card flips on reveal, Confetti for perfect consensus, and screen shake on heavy disagreements!</li>
+                <li>🔥 <strong>Team Chemistry:</strong> Live stats on how many perfect consensuses the team achieves in the current session.</li>
+                <li>⌨️ <strong>Keyboard Shortcuts:</strong> Press 'Enter' to join rooms and 'ESC' to quickly close popup windows.</li>
+                <br>
                 <li class="whats-new-version">v1.3 — March 2026</li>
-                <li>🎨 <strong>Complete UI/UX Redesign:</strong> Modern, clean interface with smooth animations and
-                    premium button interactions</li>
-                <li>🌓 <strong>Enhanced Dark Mode:</strong> Elegant theme toggle with smooth transitions between light
-                    and dark modes</li>
-                <li>👤 <strong>Custom Avatars:</strong> Choose from 10 unique avatars that display throughout your
-                    session</li>
-                <li>⏰ <strong>6-Hour Session Persistence:</strong> Your session data is saved for 6 hours - close your
-                    browser and come back anytime</li>
-                <li>🔄 <strong>5-Minute Reconnection Grace:</strong> If you disconnect temporarily, you have 5 minutes
-                    to reconnect without losing your spot</li>
-                <li>💤 <strong>Away Status Indicator:</strong> Disconnected users are marked as "Away" with a sleep
-                    emoji and dashed border until they reconnect or are removed</li>
-                <li>🏠 <strong>Recommended Rooms:</strong> Quick access to suggested room names on the login screen for
-                    faster joining</li>
-                <li>🔙 <strong>Quick Return to Login:</strong> Click on your user info box in the lobby to instantly
-                    return to the login screen</li>
-                <li>☕ <strong>Break & Question Indicators:</strong> Subtle emoji badges appear on user avatars when
-                    requesting breaks or asking questions</li>
-                <li>🎯 <strong>Flexible Voting:</strong> Change or deselect your vote anytime - when votes are revealed
-                    and you change your vote, only the votes are hidden (not deleted)</li>
-                <li>🔄 <strong>Restart Anytime:</strong> Scrum Masters can restart voting at any time, even without
-                    revealing votes first</li>
-                <li>📊 <strong>Voting Statistics:</strong> Automatic calculation of Most Common vote and Consensus
+                <li>🎨 <strong>Complete UI/UX Redesign:</strong> Modern, clean interface with smooth animations and premium button interactions</li>
+                <li>🌓 <strong>Enhanced Dark Mode:</strong> Elegant theme toggle with smooth transitions between light and dark modes</li>
+                <li>👤 <strong>Custom Avatars:</strong> Choose from 15+ unique avatars</li>
+                <li>⏰ <strong>6-Hour Session Persistence & Hot Reconnection</strong></li>
                     percentage when votes are revealed (excludes Scrum Master votes)</li>
                 <li>🔔 <strong>MSN Messenger-Style Notifications:</strong> Scrum Masters can send instant vibration
                     alerts to team members with sound effects and visual feedback</li>
@@ -1185,19 +1459,22 @@
                     </div>
                 </div>
 
+                <!-- Center: Page Title -->
                 <div class="page-title">
                     <h2>Scrum Poker</h2>
+                </div>
+
+                <!-- Right: Objective (Story) -->
+                <div class="header-story-section">
+                    <div class="story-label" title="Current Target">🎯 Target</div>
+                    <input type="text" id="storyInput" class="header-story-input" placeholder="Enter objective or Jira link..." oninput="updateStory(this.value)" style="display: none;" aria-label="Current Objective">
+                    <div id="storyDisplay" class="header-story-display" style="display: none;">
+                        <span class="empty-story">No target set</span>
+                    </div>
                 </div>
             </div>
 
             <div class="divider"></div>
-
-            <!-- Story Input (#3) -->
-            <div class="story-section">
-                <div class="story-label">📋 Voting on:</div>
-                <input type="text" id="storyInput" class="story-input" placeholder="Enter story or ticket title..." oninput="updateStory(this.value)" style="display: none;" aria-label="Story or ticket being voted on">
-                <div id="storyDisplay" class="story-display" style="display: none;">No story set</div>
-            </div>
 
             <div class="voting-section">
                 <div class="voting-controls">
@@ -1236,6 +1513,11 @@
                         <div class="stat-label">🤝 Consensus</div>
                         <div class="stat-value" id="consensusValue">-</div>
                     </div>
+                    <!-- Phase 2: Team Chemistry Card -->
+                    <div class="stat-card team-chemistry-card" id="teamChemistryCard" style="display: none;">
+                        <div class="stat-label">🔥 Team Chemistry</div>
+                        <div class="chemistry-value" id="chemistryValue">-</div>
+                    </div>
                 </div>
             </div>
 
@@ -1251,6 +1533,16 @@
 
             <div id="userContainer">
                 <div class="users-grid" id="users"></div>
+            </div>
+
+            <!-- Phase 2: Emoji Reaction Bar -->
+            <div id="reactionBar" class="reaction-bar-container" style="display: none;">
+                <button class="reaction-btn" onclick="sendEmoji('😱')" aria-label="React with 😱">😱</button>
+                <button class="reaction-btn" onclick="sendEmoji('🤔')" aria-label="React with 🤔">🤔</button>
+                <button class="reaction-btn" onclick="sendEmoji('🎯')" aria-label="React with 🎯">🎯</button>
+                <button class="reaction-btn" onclick="sendEmoji('🔥')" aria-label="React with 🔥">🔥</button>
+                <button class="reaction-btn" onclick="sendEmoji('👍')" aria-label="React with 👍">👍</button>
+                <button class="reaction-btn" onclick="sendEmoji('👎')" aria-label="React with 👎">👎</button>
             </div>
         </div>
     </div>
