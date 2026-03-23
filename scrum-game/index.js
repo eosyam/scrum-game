@@ -33,6 +33,11 @@ app.get('/health', (req, res) => {
 
 app.use(express.static(path.join(__dirname, '/')));
 
+// URL deep linking (#1): serve index.html for /room/:roomName
+app.get('/room/:roomName', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 io.on('connection', (socket) => {
 
     function encodeHTML(str) {
@@ -51,7 +56,7 @@ io.on('connection', (socket) => {
         avatar = encodeHTML(avatar || '👤');
 
         socket.join(room);
-        if (!rooms[room]) rooms[room] = { master: null, users: {}, votesRevealed: false };
+        if (!rooms[room]) rooms[room] = { master: null, users: {}, votesRevealed: false, currentStory: '' };
 
         // Check if user with same name exists (reconnection scenario)
         let existingUserId = null;
@@ -105,6 +110,11 @@ io.on('connection', (socket) => {
         }
 
         io.to(room).emit('updateUsers', rooms[room].users);
+
+        // Send current story to newly joined user
+        if (rooms[room].currentStory) {
+            socket.emit('storyUpdated', rooms[room].currentStory);
+        }
     });
 
     socket.on('vote', ({ room, vote }) => {
@@ -303,6 +313,17 @@ io.on('connection', (socket) => {
             console.log(`Scrum Master sent vibration to ${targetSocketId} in room ${room}`);
         } else {
             console.log(`Unauthorized vibration attempt by ${socket.id} in room ${room}`);
+        }
+    });
+
+    // Story input (#3): Scrum Master updates story title
+    socket.on('updateStory', ({ room, story }) => {
+        room = encodeHTML(room);
+        story = encodeHTML(story);
+
+        if (rooms[room] && rooms[room].master === socket.id) {
+            rooms[room].currentStory = story;
+            io.to(room).emit('storyUpdated', story);
         }
     });
 

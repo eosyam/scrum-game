@@ -14,7 +14,7 @@
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://scrum-oiyf.onrender.com/">
+    <meta property="og:url" content="https://scrum-game-ckpj.onrender.com/">
     <meta property="og:title" content="Agile Scrum Master Game - Free Online Collaborative Tool">
     <meta property="og:description"
         content="Interactive and engaging Scrum planning tool for Agile teams. Simplify your estimation process with our free online game.">
@@ -22,15 +22,15 @@
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://scrum-oiyf.onrender.com/">
+    <meta property="twitter:url" content="https://scrum-game-ckpj.onrender.com/">
     <meta property="twitter:title" content="Agile Scrum Master Game - Free Online Collaborative Tool">
     <meta property="twitter:description"
         content="Interactive and engaging Scrum planning tool for Agile teams. Simplify your estimation process with our free online game.">
     <!-- <meta property="twitter:image" content="https://scrum-oiyf.onrender.com/image.jpg"> -->
 
     <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="favicon.png">
-    <link rel="stylesheet" href="index.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.png">
+    <link rel="stylesheet" href="/index.css">
     <script src="/socket.io/socket.io.js"></script>
     <script>
 
@@ -41,6 +41,8 @@
         let selectedAvatar = '👤'; // Default avatar
         let votesRevealed = false; // Track if votes are currently revealed
         const SESSION_DURATION = 365 * 24 * 60 * 60 * 1000; // 1 yıl - kalıcı session
+        const APP_VERSION = '1.3';
+        let votingHistory = []; // Session history for export (#11)
 
         // Audio setup for mobile browser support
         let notificationAudio = null;
@@ -83,6 +85,20 @@
                     }
                 });
             });
+
+            // URL deep linking (#1): parse /room/:roomName from URL
+            const pathMatch = window.location.pathname.match(/^\/room\/(.+)$/);
+            if (pathMatch) {
+                const roomFromUrl = decodeURIComponent(pathMatch[1]);
+                document.getElementById('room').value = roomFromUrl;
+            }
+
+            // Versioned changelog (#12): auto-open What's New if version changed
+            const lastSeenVersion = localStorage.getItem('lastSeenVersion');
+            if (lastSeenVersion !== APP_VERSION) {
+                setTimeout(() => { toggleWhatsNew(); }, 500);
+                localStorage.setItem('lastSeenVersion', APP_VERSION);
+            }
         });
 
         // LocalStorage'dan session bilgilerini al
@@ -379,6 +395,9 @@
 
             currentRoom = null;
             isMaster = false;
+
+            // URL deep linking (#1): reset URL to root
+            window.history.pushState({}, '', '/');
         }
 
         function joinRoom() {
@@ -419,6 +438,20 @@
 
                 // Hide What's New button when entering room
                 document.getElementById('whatsNewButton').style.display = 'none';
+
+                // URL deep linking (#1): update URL to /room/roomName
+                window.history.pushState({}, '', '/room/' + encodeURIComponent(room));
+
+                // Story input (#3): setup story field visibility
+                const storyInput = document.getElementById('storyInput');
+                const storyDisplay = document.getElementById('storyDisplay');
+                if (isMaster) {
+                    storyInput.style.display = 'block';
+                    storyDisplay.style.display = 'none';
+                } else {
+                    storyInput.style.display = 'none';
+                    storyDisplay.style.display = 'block';
+                }
 
             } else {
                 alert('ismini ve bağlanmak istediğin odayı gir.');
@@ -499,7 +532,7 @@
             }
 
             const vibrateButton = (isMaster && !user.isMaster)
-                ? `<button class="vibrate-btn" onclick="sendVibration('${socketId}', event)" title="Notify user">🔔</button>`
+                ? `<button class="vibrate-btn" onclick="sendVibration('${socketId}', event)" title="Notify user" aria-label="Send notification to ${userName}">🔔</button>`
                 : '';
 
             return `
@@ -579,6 +612,24 @@
                     document.getElementById('mostCommonValue').textContent = statistics.median;
                     document.getElementById('consensusValue').textContent = statistics.consensus;
                     console.log('Statistics updated:', statistics);
+
+                    // Session history (#11): record this round
+                    const storyText = document.getElementById('storyInput')?.value || document.getElementById('storyDisplay')?.textContent || '';
+                    const roundVotes = {};
+                    Object.values(users).forEach(u => {
+                        if (!u.isMaster && !u.isAway && u.vote !== null) {
+                            roundVotes[u.name] = u.vote;
+                        }
+                    });
+                    votingHistory.push({
+                        story: storyText.trim() || 'Untitled',
+                        votes: roundVotes,
+                        mostCommon: statistics.median,
+                        consensus: statistics.consensus,
+                        timestamp: new Date().toLocaleTimeString()
+                    });
+                    // Show copy button
+                    document.getElementById('copyHistoryBtn').style.display = 'inline-flex';
                 }
             } catch (error) {
                 console.error('Error in updateVotes:', error);
@@ -790,7 +841,7 @@
         // Initialize and unlock audio for mobile browsers
         function initializeAudio() {
             if (!notificationAudio) {
-                notificationAudio = new Audio('nudge.mp3');
+                notificationAudio = new Audio('/nudge.mp3');
                 notificationAudio.volume = 0.7;
                 // Preload the audio
                 notificationAudio.load();
@@ -858,6 +909,55 @@
         // Manuel pulse mekanizması kaldırıldı
         // Socket.io'nun kendi ping/pong mekanizması yeterli
 
+        // Story input (#3): Scrum Master updates story, broadcast to all
+        let storyDebounceTimer = null;
+        function updateStory(value) {
+            if (!isMaster || !currentRoom) return;
+            clearTimeout(storyDebounceTimer);
+            storyDebounceTimer = setTimeout(() => {
+                socket.emit('updateStory', { room: currentRoom, story: value });
+            }, 300);
+        }
+
+        socket.on('storyUpdated', function (story) {
+            const storyInput = document.getElementById('storyInput');
+            const storyDisplay = document.getElementById('storyDisplay');
+            if (storyInput && !isMaster) {
+                storyDisplay.textContent = story || 'No story set';
+            }
+            if (storyInput && isMaster) {
+                storyInput.value = story || '';
+            }
+        });
+
+        // Session history (#11): copy all voting rounds to clipboard
+        function copySessionHistory() {
+            if (votingHistory.length === 0) return;
+
+            let summary = `📊 Scrum Poker Session Summary\n`;
+            summary += `🏠 Room: ${currentRoom}\n`;
+            summary += `📅 Date: ${new Date().toLocaleDateString()}\n`;
+            summary += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+            votingHistory.forEach((round, i) => {
+                summary += `Round ${i + 1}: ${round.story}\n`;
+                summary += `  🎯 Most Common: ${round.mostCommon}  |  🤝 Consensus: ${round.consensus}\n`;
+                const voteEntries = Object.entries(round.votes);
+                if (voteEntries.length > 0) {
+                    summary += `  Votes: ${voteEntries.map(([name, vote]) => `${name}: ${vote}`).join(', ')}\n`;
+                }
+                summary += `  ⏰ ${round.timestamp}\n\n`;
+            });
+
+            navigator.clipboard.writeText(summary).then(() => {
+                const btn = document.getElementById('copyHistoryBtn');
+                btn.innerHTML = '✅ Copied!';
+                setTimeout(() => { btn.innerHTML = '📋 Export'; }, 2000);
+            }).catch(err => {
+                console.error('Clipboard write failed:', err);
+            });
+        }
+
     </script>
 
 
@@ -867,7 +967,7 @@
 
     <!-- Theme Toggle (Fixed position, always visible) -->
     <div class="theme-toggle-container">
-        <div class="theme-toggle-switch" onclick="toggleTheme()">
+        <div class="theme-toggle-switch" onclick="toggleTheme()" role="button" aria-label="Toggle dark/light theme">
             <div class="theme-toggle-slider">
                 <span id="themeIcon">🌙</span>
             </div>
@@ -907,63 +1007,63 @@
             <div class="avatar-section">
                 <span class="avatar-section-label">Choose Avatar</span>
                 <div class="avatar-grid">
-                    <label class="avatar-option selected">
+                    <label class="avatar-option selected" aria-label="Select default avatar">
                         <input type="radio" name="avatar" value="👤" checked>
                         <span>👤</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select business man avatar">
                         <input type="radio" name="avatar" value="👨‍💼">
                         <span>👨‍💼</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select business woman avatar">
                         <input type="radio" name="avatar" value="👩‍💼">
                         <span>👩‍💼</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select woman developer avatar">
                         <input type="radio" name="avatar" value="👩‍💻">
                         <span>👩‍💻</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select developer avatar">
                         <input type="radio" name="avatar" value="🧑‍💻">
                         <span>🧑‍💻</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select wizard avatar">
                         <input type="radio" name="avatar" value="🧙‍♂️">
                         <span>🧙‍♂️</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select witch avatar">
                         <input type="radio" name="avatar" value="🧙‍♀️">
                         <span>🧙‍♀️</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select superhero avatar">
                         <input type="radio" name="avatar" value="🦸">
                         <span>🦸</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select superheroine avatar">
                         <input type="radio" name="avatar" value="🦸‍♀️">
                         <span>🦸‍♀️</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select ninja avatar">
                         <input type="radio" name="avatar" value="🥷">
                         <span>🥷</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select alien avatar">
                         <input type="radio" name="avatar" value="👽">
                         <span>👽</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select cat avatar">
                         <input type="radio" name="avatar" value="🐱">
                         <span>🐱</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select dog avatar">
                         <input type="radio" name="avatar" value="🐶">
                         <span>🐶</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select lion avatar">
                         <input type="radio" name="avatar" value="🦁">
                         <span>🦁</span>
                     </label>
-                    <label class="avatar-option">
+                    <label class="avatar-option" aria-label="Select fox avatar">
                         <input type="radio" name="avatar" value="🦊">
                         <span>🦊</span>
                     </label>
@@ -989,7 +1089,7 @@
         <div class="feedback-modal-content">
             <div class="feedback-modal-header">
                 <h2 class="feedback-title">Leave feedback</h2>
-                <button class="close-modal" onclick="toggleFeedback()">&times;</button>
+                <button class="close-modal" onclick="toggleFeedback()" aria-label="Close feedback modal">&times;</button>
             </div>
             <p class="feedback-description">Thank you for using Scrum Poker. We are always looking to improve the app,
                 so please leave us some feedback or suggestions to make your experience better.</p>
@@ -1031,9 +1131,10 @@
         <div class="whats-new-modal-content">
             <div class="whats-new-modal-header">
                 <h2 class="whats-new-title">What's New? ✨</h2>
-                <button class="close-modal" onclick="toggleWhatsNew()">&times;</button>
+                <button class="close-modal" onclick="toggleWhatsNew()" aria-label="Close what's new modal">&times;</button>
             </div>
             <ul class="whats-new-list">
+                <li class="whats-new-version">v1.3 — March 2026</li>
                 <li>🎨 <strong>Complete UI/UX Redesign:</strong> Modern, clean interface with smooth animations and
                     premium button interactions</li>
                 <li>🌓 <strong>Enhanced Dark Mode:</strong> Elegant theme toggle with smooth transitions between light
@@ -1085,11 +1186,18 @@
                 </div>
 
                 <div class="page-title">
-                    <h1>Scrum Poker</h1>
+                    <h2>Scrum Poker</h2>
                 </div>
             </div>
 
             <div class="divider"></div>
+
+            <!-- Story Input (#3) -->
+            <div class="story-section">
+                <div class="story-label">📋 Voting on:</div>
+                <input type="text" id="storyInput" class="story-input" placeholder="Enter story or ticket title..." oninput="updateStory(this.value)" style="display: none;" aria-label="Story or ticket being voted on">
+                <div id="storyDisplay" class="story-display" style="display: none;">No story set</div>
+            </div>
 
             <div class="voting-section">
                 <div class="voting-controls">
@@ -1103,14 +1211,17 @@
                         <button class="vote-btn" onclick="toggleVote(event, 13)">13</button>
                         <button class="vote-btn" onclick="toggleVote(event, 21)">21</button>
                         <button class="vote-btn" onclick="toggleVote(event, 40)">40</button>
-                        <button class="vote-btn" onclick="toggleVote(event, '☕')">☕</button>
+                        <button class="vote-btn" onclick="toggleVote(event, '☕')" aria-label="Vote for break (coffee)">☕</button>
                     </div>
                     <div class="request-buttons">
-                        <button id="breakRequestBtn" class="request-btn" onclick="toggleBreakRequest()">
+                        <button id="breakRequestBtn" class="request-btn" onclick="toggleBreakRequest()" aria-label="Request a break">
                             ☕ Request Break
                         </button>
-                        <button id="questionBtn" class="request-btn" onclick="toggleQuestion()">
+                        <button id="questionBtn" class="request-btn" onclick="toggleQuestion()" aria-label="I have a question">
                             ❓ Question
+                        </button>
+                        <button id="copyHistoryBtn" class="copy-history-btn" onclick="copySessionHistory()" style="display: none;" title="Copy session summary to clipboard" aria-label="Copy session summary to clipboard">
+                            📋 Export
                         </button>
                     </div>
                 </div>

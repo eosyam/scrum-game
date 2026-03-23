@@ -2257,3 +2257,109 @@ hr, .divider {
         font-size: 36px;
     }
 }
+
+/* ===== STORY INPUT (#3) ===== */
+.story-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--card-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    transition: all 0.3s ease;
+}
+
+.story-section:focus-within {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+.story-label {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.story-input {
+    flex: 1;
+    padding: 8px 12px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    outline: none;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.story-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+    font-weight: 400;
+}
+
+.story-input:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.story-display {
+    flex: 1;
+    padding: 8px 12px;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+}
+
+/* Page title in header */
+.page-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ===== COPY HISTORY BUTTON (#11) ===== */
+.copy-history-btn {
+    padding: 8px 14px;
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.copy-history-btn:hover {
+    border-color: var(--button-primary);
+    color: var(--button-primary);
+}
+
+.copy-history-btn:active {
+    transform: scale(0.95);
+}
+
+/* ===== VERSIONED CHANGELOG (#12) ===== */
+.whats-new-version {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: var(--button-primary) !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 8px 0 12px 0 !important;
+    border-bottom: 2px solid var(--input-focus) !important;
+    margin-bottom: 4px;
+}
