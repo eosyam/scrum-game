@@ -258,12 +258,15 @@
         function toggleFeedback() {
             const modal = document.getElementById('feedbackModal');
             const form = document.getElementById('feedbackForm');
+            const success = document.getElementById('feedbackSuccess');
+            const submitBtn = document.getElementById('feedbackSubmitBtn');
 
             if (modal.style.display === 'flex') {
                 modal.style.display = 'none';
+                // Reset form when closing
                 form.reset();
-                document.getElementById('feedbackSuccess').style.display = 'none';
                 form.style.display = 'block';
+                success.style.display = 'none';
             } else {
                 modal.style.display = 'flex';
             }
@@ -294,22 +297,6 @@
                 }
             }
         });
-            const success = document.getElementById('feedbackSuccess');
-            const submitBtn = document.getElementById('feedbackSubmitBtn');
-
-            if (modal.style.display === 'flex') {
-                modal.style.display = 'none';
-                // Reset form when closing
-                form.reset();
-                form.style.display = 'block';
-                success.style.display = 'none';
-
-                // Don't reset cooldown when closing - keep it active
-                // This prevents spam by closing and reopening
-            } else {
-                modal.style.display = 'flex';
-            }
-        }
 
         // Submit feedback form
         let feedbackCooldownTimer = null;
