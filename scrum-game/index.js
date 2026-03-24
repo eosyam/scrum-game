@@ -381,18 +381,25 @@ app.post('/api/feedback', async (req, res) => {
                 const stars = '⭐'.repeat(Number(rating) || 0);
                 const contactEmail = (email && email !== 'Not provided') ? email : 'Not provided';
 
+                const dns = require('dns');
                 const transporter = nodemailer.createTransport({
                     host: 'smtp.gmail.com',
                     port: 587,
                     secure: false,
-                    family: 4, // Force IPv4 (Render doesn't support IPv6)
                     auth: {
                         user: process.env.EMAIL_USER,
                         pass: process.env.EMAIL_PASS
                     },
                     connectionTimeout: 30000,
                     greetingTimeout: 15000,
-                    socketTimeout: 30000
+                    socketTimeout: 30000,
+                    dnsLookup: (hostname, options, callback) => {
+                        dns.resolve4(hostname, (err, addresses) => {
+                            if (err) return callback(err);
+                            console.log('   DNS resolved (IPv4):', addresses[0]);
+                            callback(null, addresses[0], 4);
+                        });
+                    }
                 });
 
                 const htmlContent = `
