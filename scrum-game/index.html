@@ -93,12 +93,8 @@
                 document.getElementById('room').value = roomFromUrl;
             }
 
-            // Versioned changelog (#12): auto-open What's New if version changed
-            const lastSeenVersion = localStorage.getItem('lastSeenVersion');
-            if (lastSeenVersion !== APP_VERSION) {
-                setTimeout(() => { toggleWhatsNew(); }, 500);
-                localStorage.setItem('lastSeenVersion', APP_VERSION);
-            }
+            // Update last seen version silently (no auto-popup)
+            localStorage.setItem('lastSeenVersion', APP_VERSION);
         });
 
         // LocalStorage'dan session bilgilerini al
