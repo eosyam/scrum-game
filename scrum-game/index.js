@@ -369,11 +369,13 @@ app.post('/api/feedback', async (req, res) => {
 
     // Send email via Web3Forms (non-blocking)
     if (process.env.WEB3FORMS_KEY) {
-        setTimeout(async () => {
+        setTimeout(() => {
             try {
                 console.log('📧 Sending email via Web3Forms...');
+                console.log('   Key (first 8 chars):', process.env.WEB3FORMS_KEY.substring(0, 8) + '...');
 
-                const stars = '⭐'.repeat(rating);
+                const stars = '⭐'.repeat(Number(rating) || 0);
+                const contactEmail = (email && email !== 'Not provided') ? email : 'no-reply@scrumpoker.app';
                 const formattedMessage = `
 New Scrum Poker Feedback Received!
 
@@ -390,34 +392,67 @@ ${message}
 Sent from Scrum Poker Feedback System
                 `.trim();
 
-                const response = await fetch('https://api.web3forms.com/submit', {
+                const postData = JSON.stringify({
+                    access_key: process.env.WEB3FORMS_KEY,
+                    subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
+                    from_name: 'Scrum Poker Feedback',
+                    email: contactEmail,
+                    message: formattedMessage
+                });
+
+                console.log('   Payload size:', postData.length, 'bytes');
+                console.log('   Contact email:', contactEmail);
+
+                const https = require('https');
+                const options = {
+                    hostname: 'api.web3forms.com',
+                    path: '/submit',
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Accept': 'application/json'
+                        'Accept': 'application/json',
+                        'Content-Length': Buffer.byteLength(postData)
                     },
-                    body: JSON.stringify({
-                        access_key: process.env.WEB3FORMS_KEY,
-                        subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
-                        from_name: 'Scrum Poker Feedback',
-                        email: email,
-                        message: formattedMessage
-                    })
+                    timeout: 30000
+                };
+
+                const req = https.request(options, (httpRes) => {
+                    let data = '';
+                    httpRes.on('data', (chunk) => { data += chunk; });
+                    httpRes.on('end', () => {
+                        try {
+                            const result = JSON.parse(data);
+                            if (result.success) {
+                                console.log('✅ Email sent successfully via Web3Forms');
+                            } else {
+                                console.error('❌ Web3Forms error:', result.message || JSON.stringify(result));
+                            }
+                        } catch (parseErr) {
+                            console.error('❌ Web3Forms response parse error:', data.substring(0, 200));
+                        }
+                    });
                 });
 
-                const result = await response.json();
+                req.on('error', (err) => {
+                    console.error('❌ Web3Forms request error:', err.message);
+                });
 
-                if (result.success) {
-                    console.log('✅ Email sent successfully via Web3Forms');
-                } else {
-                    console.error('❌ Web3Forms error:', result.message);
-                }
+                req.on('timeout', () => {
+                    req.destroy();
+                    console.error('❌ Web3Forms request timeout (30s)');
+                });
+
+                req.write(postData);
+                req.end();
+
             } catch (error) {
                 console.error('❌ Error sending email:', error.message);
+                console.error('   Stack:', error.stack);
             }
         }, 0);
     } else {
-        console.log('⚠️ WEB3FORMS_KEY not set - skipping email send\n');
+        console.log('⚠️ WEB3FORMS_KEY not set - skipping email send');
+        console.log('   Set WEB3FORMS_KEY environment variable to enable email notifications\n');
     }
 });
 
