@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
@@ -367,92 +368,66 @@ app.post('/api/feedback', async (req, res) => {
     // Return success immediately
     res.status(200).json({ success: true, message: 'Feedback received and stored' });
 
-    // Send email via Web3Forms (non-blocking)
-    if (process.env.WEB3FORMS_KEY) {
-        setTimeout(() => {
+    // Send email via Gmail SMTP (non-blocking)
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        const recipient = process.env.EMAIL_RECIPIENT || process.env.EMAIL_USER;
+
+        setTimeout(async () => {
             try {
-                console.log('📧 Sending email via Web3Forms...');
-                console.log('   Key (first 8 chars):', process.env.WEB3FORMS_KEY.substring(0, 8) + '...');
+                console.log('📧 Sending email via Gmail SMTP...');
+                console.log('   From:', process.env.EMAIL_USER);
+                console.log('   To:', recipient);
 
                 const stars = '⭐'.repeat(Number(rating) || 0);
-                const contactEmail = (email && email !== 'Not provided') ? email : 'no-reply@scrumpoker.app';
-                const formattedMessage = `
-New Scrum Poker Feedback Received!
+                const contactEmail = (email && email !== 'Not provided') ? email : 'Not provided';
 
-${stars} Rating: ${rating} / 5 stars
-
-📧 Contact Email: ${email}
-🏠 Room: ${room}
-🕐 Timestamp: ${new Date(timestamp).toLocaleString()}
-
-💬 Message:
-${message}
-
----
-Sent from Scrum Poker Feedback System
-                `.trim();
-
-                const postData = JSON.stringify({
-                    access_key: process.env.WEB3FORMS_KEY,
-                    subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
-                    from_name: 'Scrum Poker Feedback',
-                    email: contactEmail,
-                    message: formattedMessage
-                });
-
-                console.log('   Payload size:', postData.length, 'bytes');
-                console.log('   Contact email:', contactEmail);
-
-                const https = require('https');
-                const options = {
-                    hostname: 'api.web3forms.com',
-                    path: '/submit',
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'Content-Length': Buffer.byteLength(postData)
+                const transporter = nodemailer.createTransport({
+                    service: 'gmail',
+                    auth: {
+                        user: process.env.EMAIL_USER,
+                        pass: process.env.EMAIL_PASS
                     },
-                    timeout: 30000
-                };
-
-                const req = https.request(options, (httpRes) => {
-                    let data = '';
-                    httpRes.on('data', (chunk) => { data += chunk; });
-                    httpRes.on('end', () => {
-                        try {
-                            const result = JSON.parse(data);
-                            if (result.success) {
-                                console.log('✅ Email sent successfully via Web3Forms');
-                            } else {
-                                console.error('❌ Web3Forms error:', result.message || JSON.stringify(result));
-                            }
-                        } catch (parseErr) {
-                            console.error('❌ Web3Forms response parse error:', data.substring(0, 200));
-                        }
-                    });
+                    connectionTimeout: 30000,
+                    greetingTimeout: 15000,
+                    socketTimeout: 30000
                 });
 
-                req.on('error', (err) => {
-                    console.error('❌ Web3Forms request error:', err.message);
+                const htmlContent = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px 12px 0 0; color: white;">
+                            <h2 style="margin: 0;">📬 New Feedback Received</h2>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 20px; border: 1px solid #e9ecef;">
+                            <p style="font-size: 24px; margin: 0 0 15px 0;">${stars} (${rating}/5)</p>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr><td style="padding: 8px 0; color: #666;">📧 Email:</td><td style="padding: 8px 0;">${contactEmail}</td></tr>
+                                <tr><td style="padding: 8px 0; color: #666;">🏠 Room:</td><td style="padding: 8px 0;">${room}</td></tr>
+                                <tr><td style="padding: 8px 0; color: #666;">🕐 Time:</td><td style="padding: 8px 0;">${new Date(timestamp).toLocaleString()}</td></tr>
+                            </table>
+                            <div style="margin-top: 15px; padding: 15px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
+                                <strong>💬 Message:</strong><br><br>${message}
+                            </div>
+                        </div>
+                        <div style="background: #e9ecef; padding: 10px 20px; border-radius: 0 0 12px 12px; text-align: center; color: #999; font-size: 12px;">
+                            Sent from Scrum Poker Feedback System
+                        </div>
+                    </div>
+                `;
+
+                const info = await transporter.sendMail({
+                    from: `"Scrum Poker Feedback" <${process.env.EMAIL_USER}>`,
+                    to: recipient,
+                    subject: `Scrum Poker Feedback - ${rating} ⭐ stars`,
+                    html: htmlContent
                 });
 
-                req.on('timeout', () => {
-                    req.destroy();
-                    console.error('❌ Web3Forms request timeout (30s)');
-                });
-
-                req.write(postData);
-                req.end();
-
+                console.log('✅ Email sent successfully:', info.messageId);
             } catch (error) {
                 console.error('❌ Error sending email:', error.message);
-                console.error('   Stack:', error.stack);
             }
         }, 0);
     } else {
-        console.log('⚠️ WEB3FORMS_KEY not set - skipping email send');
-        console.log('   Set WEB3FORMS_KEY environment variable to enable email notifications\n');
+        console.log('⚠️ EMAIL_USER/EMAIL_PASS not set - skipping email send\n');
     }
 });
 
@@ -711,10 +686,11 @@ server.listen(PORT, HOST, () => {
     console.log('   📡 API endpoint: /api/feedbacks');
     console.log('   ❤️  Health check: /health');
 
-    if (process.env.WEB3FORMS_KEY) {
-        console.log('   📧 Email notifications: Enabled (Web3Forms)');
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        const recipient = process.env.EMAIL_RECIPIENT || process.env.EMAIL_USER;
+        console.log(`   📧 Email notifications: Enabled (Gmail → ${recipient})`);
     } else {
-        console.log('   ⚠️  Email notifications: Disabled (WEB3FORMS_KEY not set)');
+        console.log('   ⚠️  Email notifications: Disabled (EMAIL_USER/EMAIL_PASS not set)');
     }
 
     console.log('   💾 Storage: In-memory (reset on server restart)\n');
