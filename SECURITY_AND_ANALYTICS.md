@@ -5,17 +5,15 @@ Web stream: `16223059049`, measurement ID `G-ECX1QTM93L`.
 Site: https://scrum-game-ckpj.onrender.com/
 Reporting time zone: Türkiye (UTC+03:00).
 
-The browser loads Google Analytics only after a visitor selects **Allow analytics**.
-Visitors can change or withdraw consent using **Analytics preferences**. Advertising
-storage, ad personalization and Google signals are disabled. Only page views are
-configured; room identifiers, query strings, fragments, referrers, usernames, votes,
-story titles, emails and feedback are excluded from the configured payloads.
-Enhanced measurement is disabled in this GA4 stream to prevent automatic form,
-link and history events from sending room details. Keep it disabled.
-
-Deploy the pull request before expecting live data. After deployment, open the
-site, allow analytics and check the new property's Realtime report. Local tests
-validate consent and payload sanitization but do not prove live Google ingestion.
+Google Analytics loads automatically with analytics cookie storage enabled.
+There is no injected consent banner, preference button or analytics layout CSS.
+Advertising storage, ad personalization and Google signals remain disabled.
+Only page views are configured; room identifiers, query strings, fragments,
+referrers, usernames, votes, story titles, emails and feedback are excluded from
+the configured payloads. Enhanced measurement is disabled in this GA4 stream
+to prevent automatic form, link and history events from sending room details.
+Keep it disabled. Tests validate configuration and payload sanitization;
+they do not prove live Google ingestion.
 
 ## Feedback administration
 
@@ -46,7 +44,7 @@ and abuse controls.
 
 Run `npm test` and `npm audit` inside `scrum-game/`. Nine tests cover HTTP exposure,
 feedback authentication and XSS, malformed events, session impersonation, role
-ownership, hidden votes, room isolation, analytics consent/privacy, and email
+ownership, hidden votes, room isolation, analytics configuration/privacy, and email
 composition. SMTP delivery requires the deployment's existing credentials and
 was not exercised by local tests. Dependencies were updated using npm's security
 advisories, including Nodemailer 10; `npm ci` makes deployment use the lockfile.

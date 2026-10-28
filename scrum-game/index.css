@@ -2667,15 +2667,3 @@ body.screen-shake {
     margin-left: auto;
     align-items: flex-end;
 }
-
-/* Consent stays in the page flow, so it cannot cover the join button or votes. */
-.join-section { position: relative; top: auto; left: auto; height: auto; min-height: calc(100dvh - 40px); padding: 48px 12px 60px; }
-.join-container { flex-shrink: 0; max-height: none; overflow: visible; }
-.analytics-consent { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
-.analytics-consent[hidden] { display: none; }
-.analytics-consent p { margin: 0 0 10px; }
-.analytics-consent a { color: var(--text-primary); text-decoration: underline; }
-.analytics-consent button { padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-primary); cursor: pointer; font: inherit; }
-.analytics-consent button:focus-visible, .analytics-preferences:focus-visible { outline: 2px solid var(--input-focus); outline-offset: 3px; }
-.analytics-preferences { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 10; padding: 4px 8px; border: 0; border-radius: 4px; background: var(--bg-color); color: var(--text-muted); cursor: pointer; font-size: 11px; text-decoration: underline; }
-body:has(.analytics-consent:not([hidden])) .analytics-preferences { display: none; }
