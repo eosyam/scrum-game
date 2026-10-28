@@ -12,9 +12,10 @@ function setup(choice) {
     };
     const document = {
         cookie: '',
+        querySelector() { return null; },
         head: { appendChild(node) { nodes.push(node); } },
         body: { appendChild() {} },
-        createElement(tag) { return tag === 'section' ? banner : { addEventListener() {} }; },
+        createElement(tag) { return tag === 'section' ? banner : { addEventListener() {}, setAttribute() {} }; },
         getElementById() { return banner; }
     };
     const window = { addEventListener(event, handler) { listeners[event] = handler; } };
