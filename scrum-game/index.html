@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <script defer src="/analytics.js"></script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scrum Poker - Agile Scrum Estimation Tool</title>
@@ -35,6 +36,16 @@
     <script>
 
         let socket = io.connect('/');
+        const tokenKey = (room, name) => 'scrumToken:' + JSON.stringify([room, name]);
+        const getResumeToken = () => sessionStorage.getItem(tokenKey(currentRoom, userName));
+        socket.on('joinedRoom', data => {
+            sessionStorage.setItem(tokenKey(currentRoom, userName), data.resumeToken);
+            isMaster = data.isMaster;
+            document.querySelector('.section-master').classList.toggle('d-none', !isMaster);
+            document.getElementById('revealBtn').style.display = isMaster ? 'block' : 'none';
+            document.getElementById('resetBtn').style.display = isMaster ? 'block' : 'none';
+        });
+        socket.on('joinError', message => { alert(message); returnToLogin(); });
         let currentRoom;
         let isMaster = false;
         let userName = '';
@@ -217,7 +228,7 @@
                     room: currentRoom,
                     name: userName,
                     isMaster: isMaster,
-                    avatar: selectedAvatar
+                    avatar: selectedAvatar, resumeToken: getResumeToken()
                 });
             }
         });
@@ -438,7 +449,7 @@
                 // Session bilgilerini kaydet
                 saveSession(room, name, isMaster, selectedAvatar);
 
-                socket.emit('joinRoom', { room: currentRoom, name: name, isMaster: isMaster, avatar: selectedAvatar });
+                socket.emit('joinRoom', { room: currentRoom, name: name, isMaster: isMaster, avatar: selectedAvatar, resumeToken: getResumeToken() });
 
                 // Always hide/show master controls based on current role
                 if (isMaster) {
@@ -962,7 +973,7 @@
             // Basic URL regex
             const urlRegex = /(https?:\/\/[^\s]+)/g;
             return text.replace(urlRegex, function(url) {
-                return `<a href="${url}" target="_blank" class="story-link" title="Open link in new tab">${url}</a>`;
+                return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="story-link" title="Open link in new tab">${url}</a>`;
             });
         }
 

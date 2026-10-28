@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "Scrum Poker workspace",
   "scripts": {
-    "build": "cd scrum-game && npm install",
+    "build": "cd scrum-game && npm ci",
     "start": "cd scrum-game && npm start",
-    "dev": "cd scrum-game && npm run dev"
+    "dev": "cd scrum-game && npm run dev",
+    "test": "cd scrum-game && npm test"
   },
   "private": true
 }

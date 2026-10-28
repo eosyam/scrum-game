@@ -6,17 +6,19 @@
   "scripts": {
     "dev": "nodemon index.js",
     "build": "echo 'No build step required for this Node.js server'",
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
     "express": "^4.22.1",
-    "nodemailer": "^8.0.3",
+    "nodemailer": "^10.2.1",
     "socket.io": "^4.8.1"
   },
   "author": "Hakan SARIER",
   "license": "ISC",
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.11",
+    "socket.io-client": "^4.8.1"
   }
 }
