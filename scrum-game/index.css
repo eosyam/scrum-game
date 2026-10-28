@@ -2678,3 +2678,4 @@ body.screen-shake {
 .analytics-consent button { padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-primary); cursor: pointer; font: inherit; }
 .analytics-consent button:focus-visible, .analytics-preferences:focus-visible { outline: 2px solid var(--input-focus); outline-offset: 3px; }
 .analytics-preferences { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 10; padding: 4px 8px; border: 0; border-radius: 4px; background: var(--bg-color); color: var(--text-muted); cursor: pointer; font-size: 11px; text-decoration: underline; }
+body:has(.analytics-consent:not([hidden])) .analytics-preferences { display: none; }
