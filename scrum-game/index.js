@@ -4,24 +4,34 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const nodemailer = require('nodemailer');
+const crypto = require('node:crypto');
+const encodeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
+    maxHttpBufferSize: 16384,
     pingTimeout: 60000,      // 60 saniye cevap yoksa disconnect
     pingInterval: 25000,     // Her 25 saniyede sunucu ping gönderir
     connectTimeout: 45000,   // Bağlantı timeout'u
     upgradeTimeout: 30000,   // WebSocket upgrade timeout'u
 });
 
-let rooms = {};
+let rooms = Object.create(null);
+const resumeTokens = new Map();
 let disconnectTimers = {}; // Track disconnect timers for 5-minute grace period
 let feedbacks = []; // In-memory feedback storage
 
 const PORT = process.env.PORT || 3000;
 const AWAY_GRACE_PERIOD = 5 * 60 * 1000; // 5 minutes in milliseconds
 
-app.use(express.json()); // Parse JSON request bodies
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Referrer-Policy', 'no-referrer');
+    next();
+});
+app.use(express.json({ limit: '16kb' })); // Parse JSON request bodies
 
 // Health check endpoint for Render (must be before static files)
 app.get('/health', (req, res) => {
@@ -32,7 +42,27 @@ app.get('/health', (req, res) => {
     });
 });
 
-app.use(express.static(path.join(__dirname, '/')));
+// Serve only browser assets; never expose server source, backups or dependencies.
+const publicFiles = new Set(['index.html', 'index.css', 'favicon.png', 'ali3.jpg', 'nudge.mp3', 'google42040f723070b1d6.html', 'analytics.js']);
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/:file', (req, res, next) => {
+    if (!publicFiles.has(req.params.file)) return next();
+    res.sendFile(path.join(__dirname, req.params.file));
+});
+
+function requireFeedbackAdmin(req, res, next) {
+    res.set('Cache-Control', 'no-store');
+    const secret = process.env.FEEDBACK_ADMIN_TOKEN;
+    if (!secret) return res.sendStatus(404);
+    const expected = Buffer.from('Basic ' + Buffer.from('admin:' + secret).toString('base64'));
+    const supplied = Buffer.from(req.get('authorization') || '');
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+        res.set('WWW-Authenticate', 'Basic realm="Feedback", charset="UTF-8"');
+        return res.sendStatus(401);
+    }
+    next();
+}
+
 
 // URL deep linking (#1): serve index.html for /room/:roomName
 app.get('/room/:roomName', (req, res) => {
@@ -41,22 +71,57 @@ app.get('/room/:roomName', (req, res) => {
 
 io.on('connection', (socket) => {
 
-    function encodeHTML(str) {
-        str = String(str);
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    // Validate before destructuring event data and authorize against this socket's room.
+    let windowStart = Date.now(), eventCount = 0;
+    const objectEvents = new Set(['joinRoom','vote','breakRequest','question','autoAway','sendReaction','sendVibration','updateStory']);
+    const roomEvents = new Set(['showVotes','resetVotes','a','pulseDetect']);
+    socket.use(([event, data], next) => {
+        if (Date.now() - windowStart > 1000) { windowStart = Date.now(); eventCount = 0; }
+        if (++eventCount > 60) return;
+        if (!objectEvents.has(event) && !roomEvents.has(event)) return;
+        if (objectEvents.has(event) && (!data || typeof data !== 'object' || Array.isArray(data))) return;
+        const room = objectEvents.has(event) ? data.room : data;
+        if (typeof room !== 'string' || !room.trim() || room.length > 100) return;
+        if (event !== 'joinRoom' && (socket.data.room !== encodeHTML(room) || !rooms[socket.data.room]?.users[socket.id])) return;
+        if (event === 'joinRoom' && (typeof data.name !== 'string' || !data.name.trim() || data.name.length > 60 || (data.avatar !== undefined && (typeof data.avatar !== 'string' || data.avatar.length > 32)))) return;
+        if (event === 'vote' && ![null,0,1,2,3,5,8,13,21,40,'0','1','2','3','5','8','13','21','40','☕','wc','away'].includes(data.vote)) return;
+        if (['breakRequest','question','autoAway'].includes(event) && typeof data[{breakRequest:'requestBreak',question:'hasQuestion',autoAway:'isAway'}[event]] !== 'boolean') return;
+        if (event === 'sendVibration' && typeof data.targetSocketId !== 'string') return;
+        if (event === 'updateStory' && (typeof data.story !== 'string' || data.story.length > 2000)) return;
+        if (event === 'sendReaction' && (typeof data.emoji !== 'string' || data.emoji.length > 16)) return;
+        if (['resetVotes','a','showVotes','updateStory','sendVibration'].includes(event) && rooms[socket.data.room].master !== socket.id) return;
+        next();
+    });
+    function publicUsers(room) {
+        return Object.fromEntries(Object.entries(rooms[room].users).map(([id, user]) => [id, {
+            ...user, vote: rooms[room].votesRevealed ? user.vote : (user.vote === null ? null : 'voted')
+        }]));
     }
 
-    function isWithinRange(number, average, tolerance) {
-        return number >= average - tolerance && number <= average + tolerance;
-    }
-
-    socket.on('joinRoom', ({ room, name, isMaster, avatar }) => {
+    socket.on('joinRoom', ({ room, name, isMaster, avatar, resumeToken }) => {
 
         room = encodeHTML(room);
         name = encodeHTML(name);
         avatar = encodeHTML(avatar || '👤');
+        if (rooms[room]?.users[socket.id]) {
+            return socket.emit('joinedRoom', { resumeToken: resumeTokens.get(socket.id), isMaster: rooms[room].master === socket.id });
+        }
 
-        socket.join(room);
+        if (socket.data.room && socket.data.room !== room) {
+            const previous = socket.data.room;
+            clearTimeout(disconnectTimers[socket.id]);
+            delete disconnectTimers[socket.id];
+            resumeTokens.delete(socket.id);
+            delete rooms[previous].users[socket.id];
+            if (rooms[previous].master === socket.id) rooms[previous].master = null;
+            io.to('game:' + previous).emit('updateUsers', publicUsers(previous));
+            if (!Object.keys(rooms[previous].users).length) delete rooms[previous];
+            socket.leave('game:' + previous);
+        }
+        if (!rooms[room] && Object.keys(rooms).length >= 1000) return socket.emit('joinError', 'Room limit reached');
+        if (rooms[room] && Object.keys(rooms[room].users).length >= 100 && !rooms[room].users[socket.id]) return socket.emit('joinError', 'Room is full');
+        socket.join('game:' + room);
+        socket.data.room = room;
         if (!rooms[room]) rooms[room] = { master: null, users: {}, votesRevealed: false, currentStory: '' };
 
         // Check if user with same name exists (reconnection scenario)
@@ -64,13 +129,16 @@ io.on('connection', (socket) => {
         let existingUserData = null;
 
         for (let userId in rooms[room].users) {
-            if (rooms[room].users[userId].name === name) {
+            if (rooms[room].users[userId].name === name && typeof resumeToken === 'string' && resumeTokens.get(userId) === resumeToken) {
                 existingUserId = userId;
                 existingUserData = rooms[room].users[userId];
                 break;
             }
         }
 
+        const duplicateName = Object.entries(rooms[room].users).some(([id, user]) => user.name === name && id !== socket.id && id !== existingUserId);
+        if (duplicateName) { socket.leave('game:' + room); delete socket.data.room; return socket.emit('joinError', 'Name already in use'); }
+        isMaster = existingUserId ? rooms[room].master === existingUserId : (isMaster === true && (!rooms[room].master || rooms[room].master === socket.id));
         // If reconnecting, restore previous state and cancel disconnect timer
         if (existingUserId && existingUserData) {
             // Cancel disconnect timer if exists
@@ -81,6 +149,9 @@ io.on('connection', (socket) => {
 
             // Remove old user entry
             delete rooms[room].users[existingUserId];
+            resumeTokens.delete(existingUserId);
+            const oldSocket = io.sockets.sockets.get(existingUserId);
+            if (oldSocket && oldSocket.id !== socket.id) { oldSocket.leave('game:' + room); delete oldSocket.data.room; }
 
             // Restore state with new socket ID
             rooms[room].users[socket.id] = {
@@ -110,8 +181,11 @@ io.on('connection', (socket) => {
             rooms[room].master = socket.id;
         }
 
-        io.to(room).emit('updateUsers', rooms[room].users);
+        io.to('game:' + room).emit('updateUsers', publicUsers(room));
 
+        const token = typeof resumeToken === 'string' && existingUserId ? resumeToken : crypto.randomBytes(32).toString('hex');
+        resumeTokens.set(socket.id, token);
+        socket.emit('joinedRoom', { resumeToken: token, isMaster });
         // Send current story to newly joined user
         if (rooms[room].currentStory) {
             socket.emit('storyUpdated', rooms[room].currentStory);
@@ -121,7 +195,7 @@ io.on('connection', (socket) => {
     socket.on('vote', ({ room, vote }) => {
 
         room = encodeHTML(room);
-        vote = encodeHTML(vote);
+        vote = vote === null ? null : encodeHTML(vote);
 
         if (rooms[room] && rooms[room].users[socket.id]) {
             rooms[room].users[socket.id].vote = vote;
@@ -130,10 +204,10 @@ io.on('connection', (socket) => {
             if (rooms[room].votesRevealed) {
                 rooms[room].votesRevealed = false;
                 // Send hideVotes event to all clients to hide votes but keep the vote data
-                io.to(room).emit('hideVotes', rooms[room].users);
+                io.to('game:' + room).emit('hideVotes', publicUsers(room));
             } else {
                 // Normal vote update
-                io.to(room).emit('updateUsers', rooms[room].users);
+                io.to('game:' + room).emit('updateUsers', publicUsers(room));
             }
         }
     });
@@ -206,12 +280,12 @@ io.on('connection', (socket) => {
                 consensus: validVotes.length > 0 ? `${consensus}%` : '-'
             };
 
-            io.to(room).emit('updateVotes', rooms[room].users, totalVotes, statistics);
+            io.to('game:' + room).emit('updateVotes', rooms[room].users, totalVotes, statistics);
         }
     });
 
     socket.on('pulseDetect', (room) => {
-        io.to(room).emit('pulseDetected'); 
+        io.to('game:' + room).emit('pulseDetected');
     });
 
     socket.on('a', (room) => {
@@ -222,7 +296,7 @@ io.on('connection', (socket) => {
             for (let userId in rooms[room].users) {
                 rooms[room].users[userId].vote = null;
             }
-            io.to(room).emit('a', rooms[room].users);
+            io.to('game:' + room).emit('a', rooms[room].users);
         }
 
     });
@@ -234,7 +308,7 @@ io.on('connection', (socket) => {
 
                 // Mark user as away immediately
                 rooms[room].users[socket.id].isAway = true;
-                io.to(room).emit('updateUsers', rooms[room].users);
+                io.to('game:' + room).emit('updateUsers', publicUsers(room));
 
                 console.log(`User ${user.name} disconnected from room ${room}, starting 5-min grace period`);
 
@@ -245,12 +319,16 @@ io.on('connection', (socket) => {
                     // Check if user still exists and hasn't reconnected
                     if (rooms[room] && rooms[room].users[socket.id]) {
                         delete rooms[room].users[socket.id];
-                        io.to(room).emit('updateUsers', rooms[room].users);
+                        resumeTokens.delete(socket.id);
+                        if (rooms[room].master === socket.id) rooms[room].master = null;
+                        io.to('game:' + room).emit('updateUsers', publicUsers(room));
                     }
 
+                    if (rooms[room] && !Object.keys(rooms[room].users).length) delete rooms[room];
                     // Clean up timer reference
                     delete disconnectTimers[socket.id];
                 }, AWAY_GRACE_PERIOD);
+                disconnectTimers[socket.id].unref();
             }
         }
     });
@@ -265,7 +343,7 @@ io.on('connection', (socket) => {
             for (let userId in rooms[room].users) {
                 rooms[room].users[userId].vote = null;
             }
-            io.to(room).emit('votesReset', rooms[room].users);
+            io.to('game:' + room).emit('votesReset', rooms[room].users);
         }
     });
 
@@ -275,7 +353,7 @@ io.on('connection', (socket) => {
 
         if (rooms[room] && rooms[room].users[socket.id]) {
             rooms[room].users[socket.id].requestBreak = requestBreak;
-            io.to(room).emit('updateUsers', rooms[room].users);
+            io.to('game:' + room).emit('updateUsers', publicUsers(room));
         }
     });
 
@@ -285,7 +363,7 @@ io.on('connection', (socket) => {
 
         if (rooms[room] && rooms[room].users[socket.id]) {
             rooms[room].users[socket.id].hasQuestion = hasQuestion;
-            io.to(room).emit('updateUsers', rooms[room].users);
+            io.to('game:' + room).emit('updateUsers', publicUsers(room));
         }
     });
 
@@ -295,7 +373,7 @@ io.on('connection', (socket) => {
 
         if (rooms[room] && rooms[room].users[socket.id]) {
             rooms[room].users[socket.id].isAway = isAway;
-            io.to(room).emit('updateUsers', rooms[room].users);
+            io.to('game:' + room).emit('updateUsers', publicUsers(room));
         }
     });
 
@@ -304,7 +382,7 @@ io.on('connection', (socket) => {
         room = encodeHTML(room);
         if (rooms[room] && rooms[room].users[socket.id]) {
             const userName = rooms[room].users[socket.id].name;
-            io.to(room).emit('receiveReaction', { userName, emoji });
+            io.to('game:' + room).emit('receiveReaction', { userName, emoji });
         }
     });
 
@@ -314,7 +392,7 @@ io.on('connection', (socket) => {
         targetSocketId = encodeHTML(targetSocketId);
 
         // Check if sender is Scrum Master
-        if (rooms[room] && rooms[room].master === socket.id) {
+        if (rooms[room] && rooms[room].master === socket.id && rooms[room].users[targetSocketId]) {
             // Send vibration to specific user
             io.to(targetSocketId).emit('receiveVibration', {
                 from: socket.id,
@@ -333,24 +411,24 @@ io.on('connection', (socket) => {
 
         if (rooms[room] && rooms[room].master === socket.id) {
             rooms[room].currentStory = story;
-            io.to(room).emit('storyUpdated', story);
+            io.to('game:' + room).emit('storyUpdated', story);
         }
     });
 
 });
 
+let feedbackWindow = Date.now(), feedbackCount = 0;
 // Feedback endpoint
 app.post('/api/feedback', async (req, res) => {
-    const { rating, email, message, timestamp, room } = req.body;
-
-    // Log feedback to console immediately
-    console.log('=== NEW FEEDBACK RECEIVED ===');
-    console.log('Timestamp:', timestamp);
-    console.log('Rating:', rating, '/ 5 stars');
-    console.log('Email:', email);
-    console.log('Room:', room);
-    console.log('Message:', message);
-    console.log('============================\n');
+    const body = req.body;
+    if (!body || !Number.isInteger(body.rating) || body.rating < 1 || body.rating > 5 ||
+        typeof body.message !== 'string' || body.message.length > 4000 ||
+        (body.email !== undefined && (typeof body.email !== 'string' || body.email.length > 254)) ||
+        (body.room !== undefined && (typeof body.room !== 'string' || body.room.length > 100))) return res.sendStatus(400);
+    if (Date.now() - feedbackWindow > 60000) { feedbackWindow = Date.now(); feedbackCount = 0; }
+    if (++feedbackCount > 20) return res.sendStatus(429);
+    const rating = body.rating, timestamp = new Date().toISOString();
+    const email = encodeHTML(body.email || ''), message = encodeHTML(body.message), room = encodeHTML(body.room || '');
 
     // Store feedback in memory
     const feedbackEntry = {
@@ -363,6 +441,7 @@ app.post('/api/feedback', async (req, res) => {
     };
 
     feedbacks.push(feedbackEntry);
+    if (feedbacks.length > 500) feedbacks.shift();
     console.log(`✅ Feedback stored (Total: ${feedbacks.length} feedbacks)\n`);
 
     // Return success immediately
@@ -442,7 +521,7 @@ app.post('/api/feedback', async (req, res) => {
 });
 
 // GET endpoint to view all feedbacks (JSON API)
-app.get('/api/feedbacks', (req, res) => {
+app.get('/api/feedbacks', requireFeedbackAdmin, (req, res) => {
     res.json({
         success: true,
         total: feedbacks.length,
@@ -451,7 +530,7 @@ app.get('/api/feedbacks', (req, res) => {
 });
 
 // HTML page to view feedbacks
-app.get('/feedbacks', (req, res) => {
+app.get('/feedbacks', requireFeedbackAdmin, (req, res) => {
     const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -686,10 +765,15 @@ app.get('/feedbacks', (req, res) => {
     res.send(html);
 });
 
+app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    res.status(err.status === 413 ? 413 : 400).json({ error: 'Invalid request' });
+});
+
 // Bind to 0.0.0.0 for Render deployment (allows external connections)
 const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 
-server.listen(PORT, HOST, () => {
+if (require.main === module) server.listen(PORT, HOST, () => {
     console.log(`Server listening on ${HOST}:${PORT}`);
     console.log('\n📋 Feedback System: Active');
     console.log('   📊 View feedbacks dashboard: /feedbacks');
@@ -705,3 +789,5 @@ server.listen(PORT, HOST, () => {
 
     console.log('   💾 Storage: In-memory (reset on server restart)\n');
 });
+
+module.exports = { app, server, io };

@@ -2667,3 +2667,11 @@ body.screen-shake {
     margin-left: auto;
     align-items: flex-end;
 }
+
+/* Optional Analytics controls */
+.analytics-consent { position: fixed; bottom: 50px; left: 16px; right: 16px; z-index: 10000; padding: 16px; border-radius: 12px; background: #182135; color: #fff; box-shadow: 0 4px 24px #0006; }
+.analytics-consent[hidden] { display: none; }
+.analytics-consent p { margin: 0 0 12px; }
+.analytics-consent a { color: #a7caff; }
+.analytics-consent button, .analytics-preferences { padding: 8px 12px; border: 1px solid #a7caff; border-radius: 6px; background: #182135; color: #fff; cursor: pointer; }
+.analytics-preferences { position: fixed; bottom: 8px; left: 8px; z-index: 9999; font-size: 11px; }

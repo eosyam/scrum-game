@@ -3,7 +3,7 @@ services:
     name: scrum-poker
     env: node
     rootDir: scrum-game
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
     envVars:
