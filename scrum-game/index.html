@@ -451,6 +451,9 @@
 
                 socket.emit('joinRoom', { room: currentRoom, name: name, isMaster: isMaster, avatar: selectedAvatar, resumeToken: getResumeToken() });
 
+                // Usage event: a Scrum Master opening a room starts a game
+                if (isMaster && window.trackGameStart) window.trackGameStart();
+
                 // Always hide/show master controls based on current role
                 if (isMaster) {
                     document.getElementsByClassName('section-master')[0].classList.remove('d-none');
