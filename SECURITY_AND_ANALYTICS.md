@@ -8,12 +8,37 @@ Reporting time zone: Türkiye (UTC+03:00).
 Google Analytics loads automatically with analytics cookie storage enabled.
 There is no injected consent banner, preference button or analytics layout CSS.
 Advertising storage, ad personalization and Google signals remain disabled.
-Only page views are configured; room identifiers, query strings, fragments,
-referrers, usernames, votes, story titles, emails and feedback are excluded from
-the configured payloads. Enhanced measurement is disabled in this GA4 stream
+Page views and the usage events below are configured; room identifiers, query
+strings, fragments, referrers, usernames, votes, story titles, emails and
+feedback are excluded from every payload. Nothing is sent from localhost. Enhanced measurement is disabled in this GA4 stream
 to prevent automatic form, link and history events from sending room details.
 Keep it disabled. Tests validate configuration and payload sanitization;
 they do not prove live Google ingestion.
+
+## Usage events
+
+All events go through `window.track(name, params)` in `analytics.js`, which drops
+unknown event names and any param/value not on that event's allowlist, and always
+adds the sanitized `page_location`. Events fire from the acting user's own click,
+never from broadcast receivers, so counts are not multiplied by room size.
+
+| Event | Params | Fired when |
+| --- | --- | --- |
+| `join_room` | `role`: master / participant | Server confirms the join (once per session, not on reconnect) |
+| `game_start` | none | Server confirms the user as Scrum Master |
+| `join_error` | `reason`: room_full / room_limit / name_taken / other | Join rejected |
+| `vote_cast` | none | First vote of a round by a user (never the value) |
+| `votes_revealed` | `participant_bucket`: 1 / 2-4 / 5-9 / 10+ | Master reveals |
+| `round_reset` | none | Master resets |
+| `reaction_sent`, `nudge_sent`, `break_request`, `question_raised` | none | Clicked |
+| `story_updated` | none | Master edits the story (once per round, never the text) |
+
+### GA4 Admin steps (not doable from code)
+
+- Register `role`, `reason` and `participant_bucket` as event-scoped custom dimensions.
+- Mark `game_start` (and optionally `votes_revealed`) as key events.
+- Raise event data retention from 2 to 14 months.
+- Add an internal-traffic filter if the team tests against production.
 
 ## Feedback administration
 
@@ -42,7 +67,7 @@ and abuse controls.
 
 ## Validation
 
-Run `npm test` and `npm audit` inside `scrum-game/`. Nine tests cover HTTP exposure,
+Run `npm test` and `npm audit` inside `scrum-game/`. Thirteen tests cover HTTP exposure,
 feedback authentication and XSS, malformed events, session impersonation, role
 ownership, hidden votes, room isolation, analytics configuration/privacy, and email
 composition. SMTP delivery requires the deployment's existing credentials and
