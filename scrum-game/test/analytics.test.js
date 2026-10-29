@@ -39,6 +39,15 @@ test('page views exclude room identifiers and advertising signals', () => {
     assert.ok(!JSON.stringify(app.commands).includes('secret@example.com'));
 });
 
+test('game_start event carries no room identifiers', () => {
+    const app = setup();
+    app.window.trackGameStart();
+    const events = app.window.dataLayer.map(args => Array.from(args)).filter(args => args[0] === 'event' && args[1] === 'game_start');
+    assert.equal(events.length, 1);
+    assert.equal(events[0][2].page_location, 'https://example.com/room/');
+    assert.ok(!JSON.stringify(events).includes('private-team'));
+});
+
 test('Nodemailer upgrade can still compose the feedback email', async () => {
     const transport = require('nodemailer').createTransport({ streamTransport: true, buffer: true });
     const result = await transport.sendMail({ from: 'sender@example.com', to: 'owner@example.com', subject: 'Feedback', html: '<p>Safe feedback</p>' });

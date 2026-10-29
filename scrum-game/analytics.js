@@ -28,5 +28,9 @@
         script.src = 'https://www.googletagmanager.com/gtag/js?id=' + measurementId;
         document.head.appendChild(script);
     }
+    // Usage events carry no room names, user names or other identifiers.
+    window.trackGameStart = () => {
+        if (typeof window.gtag === 'function') window.gtag('event', 'game_start', { page_location: safeLocation() });
+    };
     start();
 })();
